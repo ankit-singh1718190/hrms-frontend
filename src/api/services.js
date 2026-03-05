@@ -33,7 +33,8 @@ export const employeeAPI = {
 // Attendance
 export const attendanceAPI = {
   checkIn: (data) => api.post('/attendance/checkin', data),
-  checkOut: (data) => api.post('/attendance/checkout', data),
+  checkOut: () => api.post('/attendance/checkout'),
+  getToday: () => api.get('/attendance/today'),
 };
 
 // Leave

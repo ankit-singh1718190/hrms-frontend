@@ -1,271 +1,441 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Plus, Search, Filter, Edit2, Trash2, Eye, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { employeeAPI } from '../api/services';
-import Card, { CardHeader, CardBody } from '../components/ui/Card';
-import Button from '../components/ui/Button';
-import Badge, { statusBadge } from '../components/ui/Badge';
-import Table from '../components/ui/Table';
-import Modal from '../components/ui/Modal';
-import Input, { Select } from '../components/ui/Input';
+import { Plus, Search, Eye, Edit2, Trash2, X, ChevronLeft, ChevronRight } from 'lucide-react';
 
-const DEPARTMENTS = ['Engineering', 'HR', 'Finance', 'Sales', 'Marketing', 'Operations', 'IT', 'Legal', 'Admin'];
-const STATUSES = ['ACTIVE', 'RESIGNATION_SUBMITTED', 'NOTICE_PERIOD', 'EXITED', 'TERMINATED'];
-const ROLES = ['EMPLOYEE', 'MANAGER', 'HR', 'ADMIN'];
+const unwrap = (res) => res?.data?.data;
 
-const emptyForm = {
-  firstName: '', lastName: '', emailId: '', contactNumber1: '', department: '', designation: '',
-  basicEmployeeSalary: '', role: 'EMPLOYEE', joiningDate: '',
-  gender: '', dateOfBirth: '', city: '', state: '', houseNo: '',
-  panNumber: '', accountNo: '', ifscCode: '', bankName: '', bankBranch: '',
-  password: '',
+function Field({ label, name, type = 'text', options, form, setForm }) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
+      {options ? (
+        <select
+          value={form[name] ?? ''}
+          onChange={e => setForm(f => ({ ...f, [name]: e.target.value }))}
+          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+        >
+          <option value="">Select…</option>
+          {options.map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+      ) : (
+        <input
+          type={type}
+          value={form[name] ?? ''}
+          onChange={e => setForm(f => ({ ...f, [name]: e.target.value }))}
+          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+        />
+      )}
+    </div>
+  );
+}
+
+const EMPTY = {
+  prefix: '', firstName: '', lastName: '', emailId: '', password: '',
+  contactNumber1: '', dateOfBirth: '', gender: '', department: '', designation: '',
+  joiningDate: '', basicEmployeeSalary: '', role: 'EMPLOYEE', employmentStatus: 'ACTIVE',
+  nationality: 'Indian', maritalStatus: '', fatherName: '', motherName: '',
+  panNumber: '', aadharNumber: '', accountNo: '', bankName: '', bankBranch: '', ifscCode: '',
+  houseNo: '', city: '', state: '', higherQualification: '', previousCompanyName: '',
+  previousCtc: '', previousExperience: '', workEmail: '',
 };
 
 export default function Employees() {
   const [employees, setEmployees] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [search, setSearch] = useState('');
-  const [filterDept, setFilterDept] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
+  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
-  const [showModal, setShowModal] = useState(false);
-  const [viewModal, setViewModal] = useState(false);
-  const [selected, setSelected] = useState(null);
-  const [form, setForm] = useState(emptyForm);
-  const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState('');
+  const [deptFilter, setDeptFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [departments, setDepartments] = useState([]);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const fetchEmployees = useCallback(async () => {
+  const [showModal, setShowModal] = useState(false);
+  const [modalMode, setModalMode] = useState('create'); // create | edit | view
+  const [selected, setSelected] = useState(null);
+  const [form, setForm] = useState(EMPTY);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
+
+  const pageSize = 10;
+
+  const fetchEmployees = async (pg = page) => {
     setLoading(true);
+    setError('');
     try {
       let res;
-      if (search) {
-        res = await employeeAPI.search(search);
-        setEmployees(Array.isArray(res.data) ? res.data : res.data?.content || []);
-        setTotalPages(0);
-      } else if (filterDept) {
-        res = await employeeAPI.filterByDepartment(filterDept);
-        setEmployees(Array.isArray(res.data) ? res.data : res.data?.content || []);
-        setTotalPages(0);
-      } else if (filterStatus) {
-        res = await employeeAPI.filterByStatus(filterStatus);
-        setEmployees(Array.isArray(res.data) ? res.data : res.data?.content || []);
-        setTotalPages(0);
+      if (search.trim()) {
+        res = await employeeAPI.search(search.trim());
+        const data = unwrap(res);
+        setEmployees(Array.isArray(data) ? data : data?.content ?? []);
+        setTotal(Array.isArray(data) ? data.length : data?.totalElements ?? 0);
+      } else if (deptFilter) {
+        res = await employeeAPI.filterByDepartment(deptFilter);
+        const data = unwrap(res);
+        setEmployees(Array.isArray(data) ? data : data?.content ?? []);
+        setTotal(Array.isArray(data) ? data.length : data?.totalElements ?? 0);
+      } else if (statusFilter) {
+        res = await employeeAPI.filterByStatus(statusFilter);
+        const data = unwrap(res);
+        setEmployees(Array.isArray(data) ? data : data?.content ?? []);
+        setTotal(Array.isArray(data) ? data.length : data?.totalElements ?? 0);
       } else {
-        res = await employeeAPI.getAll({ page, size: 15 });
-        const data = res.data;
-        setEmployees(data?.content || []);
-        setTotalPages(data?.totalPages || 0);
+        res = await employeeAPI.getAll({ page: pg, size: pageSize, sortBy: 'id', dir: 'asc' });
+        const data = unwrap(res);
+        const list = Array.isArray(data) ? data : data?.content ?? [];
+        setEmployees(list);
+        setTotal(Array.isArray(data) ? data.length : data?.totalElements ?? 0);
       }
-    } catch { setEmployees([]); } finally { setLoading(false); }
-  }, [search, filterDept, filterStatus, page]);
+    } catch (e) {
+      setError(`Failed to load employees: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  useEffect(() => { fetchEmployees(); }, [fetchEmployees]);
+  useEffect(() => {
+    employeeAPI.getDepartments().then(r => {
+      const d = unwrap(r);
+      if (Array.isArray(d)) setDepartments(d);
+    }).catch(() => {});
+  }, []);
 
-  const openEdit = (emp) => { setSelected(emp); setForm({ ...emptyForm, ...emp }); setShowModal(true); };
-  const openCreate = () => { setSelected(null); setForm(emptyForm); setShowModal(true); };
-  const openView = (emp) => { setSelected(emp); setViewModal(true); };
+  useEffect(() => { fetchEmployees(0); setPage(0); }, [search, deptFilter, statusFilter]);
+  useEffect(() => { fetchEmployees(page); }, [page]);
+
+  const openCreate = () => { setForm(EMPTY); setFormError(''); setModalMode('create'); setShowModal(true); };
+  const openEdit = (emp) => { setForm({ ...EMPTY, ...emp, password: '' }); setFormError(''); setModalMode('edit'); setSelected(emp); setShowModal(true); };
+  const openView = (emp) => { setSelected(emp); setModalMode('view'); setShowModal(true); };
+
+  // Sanitize form: convert empty strings for numeric/date fields to proper types
+  const buildPayload = (rawForm) => {
+    const f = { ...rawForm };
+    // Convert salary to number or omit if empty
+    if (f.basicEmployeeSalary === '' || f.basicEmployeeSalary === null || f.basicEmployeeSalary === undefined) {
+      delete f.basicEmployeeSalary;
+    } else {
+      f.basicEmployeeSalary = Number(f.basicEmployeeSalary);
+    }
+    // Convert empty strings to null for optional fields
+    Object.keys(f).forEach(k => {
+      if (f[k] === '') f[k] = null;
+    });
+    return f;
+  };
+
+  // Parse backend error into a friendly message
+  const parseError = (e) => {
+    const data = e.response?.data;
+    if (!data) return e.message || 'Something went wrong. Please try again.';
+
+    // Field-level validation errors: { errors: { field: message } }
+    if (data.errors && typeof data.errors === 'object') {
+      const msgs = Object.entries(data.errors)
+        .map(([field, msg]) => `${field}: ${msg}`)
+        .join('\n');
+      return msgs || data.message || 'Validation failed. Please check all fields.';
+    }
+
+    const raw = data.message || '';
+
+    // Catch Hibernate Validator / HV internal errors
+    if (raw.startsWith('HV') || raw.includes('No validator could be found')) {
+      return 'Invalid data type in one of the fields. Please check Salary (must be a number) and other fields.';
+    }
+    if (raw.includes('Cannot coerce') || raw.includes('JSON parse')) {
+      return 'Salary must be a valid number. Please enter a numeric value.';
+    }
+    if (raw.includes('already') || raw.includes('Duplicate') || raw.includes('duplicate')) {
+      return raw; // These are readable already
+    }
+    if (raw.includes('Validation failed')) {
+      return 'Please fill in all required fields correctly.';
+    }
+    if (raw === 'Something went wrong. Please try again.') {
+      return raw;
+    }
+    return raw || 'Failed to save employee. Please try again.';
+  };
 
   const handleSave = async (e) => {
     e.preventDefault();
     setSaving(true);
-    setError('');
+    setFormError('');
+
+    // Frontend validation
+    if (!form.firstName?.trim()) { setFormError('First Name is required.'); setSaving(false); return; }
+    if (!form.lastName?.trim())  { setFormError('Last Name is required.'); setSaving(false); return; }
+    if (!form.emailId?.trim())   { setFormError('Email is required.'); setSaving(false); return; }
+    if (!form.department?.trim()) { setFormError('Department is required.'); setSaving(false); return; }
+    if (!form.designation?.trim()) { setFormError('Designation is required.'); setSaving(false); return; }
+    if (modalMode === 'create' && !form.password?.trim()) { setFormError('Password is required.'); setSaving(false); return; }
+    if (form.basicEmployeeSalary !== '' && form.basicEmployeeSalary !== null && isNaN(Number(form.basicEmployeeSalary))) {
+      setFormError('Salary must be a valid number.'); setSaving(false); return;
+    }
+
     try {
-      if (selected?.id) {
-        await employeeAPI.update(selected.id, form);
+      const payload = buildPayload(form);
+      if (modalMode === 'create') {
+        await employeeAPI.register(payload);
       } else {
-        await employeeAPI.register(form);
+        const { password, ...updateData } = payload;
+        await employeeAPI.update(selected.id, updateData);
       }
       setShowModal(false);
-      fetchEmployees();
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to save employee');
-    } finally { setSaving(false); }
+      fetchEmployees(page);
+    } catch (e) {
+      setFormError(parseError(e));
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleDelete = async (id) => {
-    if (!confirm('Delete this employee?')) return;
-    await employeeAPI.delete(id);
-    fetchEmployees();
+  const handleDelete = async (emp) => {
+    if (!confirm(`Delete ${emp.fullName}?`)) return;
+    try {
+      await employeeAPI.delete(emp.id);
+      fetchEmployees(page);
+    } catch (e) {
+      alert(e.response?.data?.message || e.message);
+    }
   };
 
-  const f = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+  const totalPages = Math.ceil(total / pageSize);
 
-  const columns = [
-    { key: 'id', label: '#', render: (_, r) => <span className="text-slate-400 text-xs">{r.id}</span> },
-    {
-      key: 'name', label: 'Employee', render: (_, r) => (
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-sm font-semibold shrink-0">
-            {((r.firstName || r.name || '?')[0]).toUpperCase()}
-          </div>
-          <div>
-            <p className="font-medium text-slate-800">{r.firstName} {r.lastName}</p>
-            <p className="text-xs text-slate-400">{r.emailId}</p>
-          </div>
-        </div>
-      ),
-    },
-    { key: 'department', label: 'Department' },
-    { key: 'designation', label: 'Designation' },
-    { key: 'basicEmployeeSalary', label: 'Salary', render: (v) => v ? `₹${Number(v).toLocaleString('en-IN')}` : '—' },
-    {
-      key: 'employmentStatus', label: 'Status',
-      render: (v) => <Badge variant={statusBadge(v)}>{v?.replace(/_/g, ' ') || '—'}</Badge>,
-    },
-    {
-      key: 'actions', label: 'Actions',
-      render: (_, r) => (
-        <div className="flex items-center gap-1">
-          <button onClick={() => openView(r)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Eye size={15} /></button>
-          <button onClick={() => openEdit(r)} className="p-1.5 text-slate-400 hover:text-yellow-600 hover:bg-yellow-50 rounded-lg transition-colors"><Edit2 size={15} /></button>
-          <button onClick={() => handleDelete(r.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><Trash2 size={15} /></button>
-        </div>
-      ),
-    },
-  ];
 
   return (
-    <div className="space-y-5">
+    <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-slate-800">Employees</h2>
-          <p className="text-sm text-slate-500">{employees.length} records found</p>
+          <h1 className="text-2xl font-bold text-slate-800">Employee Management</h1>
+          <p className="text-slate-500 text-sm mt-0.5">{total} records found</p>
         </div>
-        <Button onClick={openCreate}><Plus size={16} /> Add Employee</Button>
+        <button onClick={openCreate} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors">
+          <Plus size={16} /> Add Employee
+        </button>
       </div>
 
-      {/* Filters */}
-      <Card>
-        <CardBody className="flex flex-wrap gap-3 py-3">
-          <div className="relative flex-1 min-w-48">
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+          <strong>Error:</strong> {error}
+        </div>
+      )}
+
+      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 space-y-3">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
-              className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              type="text"
               placeholder="Search by name, email..."
               value={search}
-              onChange={(e) => { setSearch(e.target.value); setFilterDept(''); setFilterStatus(''); }}
+              onChange={e => { setSearch(e.target.value); setDeptFilter(''); setStatusFilter(''); }}
+              className="w-full pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400"
             />
           </div>
           <select
-            className="px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            value={filterDept}
-            onChange={(e) => { setFilterDept(e.target.value); setSearch(''); setFilterStatus(''); }}
+            value={deptFilter}
+            onChange={e => { setDeptFilter(e.target.value); setSearch(''); setStatusFilter(''); }}
+            className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
           >
             <option value="">All Departments</option>
-            {DEPARTMENTS.map((d) => <option key={d}>{d}</option>)}
+            {departments.map(d => <option key={d} value={d}>{d}</option>)}
           </select>
           <select
-            className="px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            value={filterStatus}
-            onChange={(e) => { setFilterStatus(e.target.value); setSearch(''); setFilterDept(''); }}
+            value={statusFilter}
+            onChange={e => { setStatusFilter(e.target.value); setSearch(''); setDeptFilter(''); }}
+            className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
           >
             <option value="">All Statuses</option>
-            {STATUSES.map((s) => <option key={s}>{s}</option>)}
+            {['ACTIVE', 'INACTIVE', 'RESIGNED', 'TERMINATED'].map(s => <option key={s} value={s}>{s}</option>)}
           </select>
-          {(search || filterDept || filterStatus) && (
-            <button onClick={() => { setSearch(''); setFilterDept(''); setFilterStatus(''); }} className="flex items-center gap-1 px-3 py-2 text-sm text-slate-500 hover:text-red-500">
-              <X size={14} /> Clear
-            </button>
-          )}
-        </CardBody>
-      </Card>
+        </div>
 
-      <Card>
-        <Table columns={columns} data={employees} loading={loading} emptyMessage="No employees found" />
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-100">
+                {['EMP ID', 'Employee', 'Department', 'Designation', 'Salary', 'Status', 'Actions'].map(h => (
+                  <th key={h} className="text-left py-3 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                [...Array(5)].map((_, i) => (
+                  <tr key={i} className="border-b border-slate-50">
+                    {[...Array(7)].map((_, j) => (
+                      <td key={j} className="py-3 px-3"><div className="h-4 bg-slate-100 rounded animate-pulse" /></td>
+                    ))}
+                  </tr>
+                ))
+              ) : employees.length === 0 ? (
+                <tr><td colSpan={7} className="py-10 text-center text-slate-400">No employees found</td></tr>
+              ) : (
+                employees.map(emp => (
+                  <tr key={emp.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                    <td className="py-3 px-3 font-mono text-xs text-indigo-600 font-medium">{emp.employeeId}</td>
+                    <td className="py-3 px-3">
+                      <div className="font-medium text-slate-800">{emp.fullName}</div>
+                      <div className="text-xs text-slate-400">{emp.emailId}</div>
+                    </td>
+                    <td className="py-3 px-3 text-slate-600">{emp.department}</td>
+                    <td className="py-3 px-3 text-slate-600">{emp.designation}</td>
+                    <td className="py-3 px-3 text-slate-700 font-medium">
+                      {emp.basicEmployeeSalary ? `₹${Number(emp.basicEmployeeSalary).toLocaleString('en-IN')}` : '—'}
+                    </td>
+                    <td className="py-3 px-3">
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                        emp.employmentStatus === 'ACTIVE' ? 'bg-green-100 text-green-700' :
+                        emp.employmentStatus === 'INACTIVE' ? 'bg-slate-100 text-slate-600' :
+                        'bg-red-100 text-red-600'
+                      }`}>{emp.employmentStatus}</span>
+                    </td>
+                    <td className="py-3 px-3">
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => openView(emp)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors"><Eye size={14} /></button>
+                        <button onClick={() => openEdit(emp)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"><Edit2 size={14} /></button>
+                        <button onClick={() => handleDelete(emp)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"><Trash2 size={14} /></button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
         {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-2 py-4 border-t border-slate-100">
-            <Button size="sm" variant="secondary" disabled={page === 0} onClick={() => setPage(p => p - 1)}>Prev</Button>
-            <span className="text-sm text-slate-600">Page {page + 1} of {totalPages}</span>
-            <Button size="sm" variant="secondary" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>Next</Button>
+          <div className="flex items-center justify-between pt-2">
+            <p className="text-xs text-slate-500">Page {page + 1} of {totalPages}</p>
+            <div className="flex gap-2">
+              <button disabled={page === 0} onClick={() => setPage(p => p - 1)} className="p-1.5 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50"><ChevronLeft size={14} /></button>
+              <button disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)} className="p-1.5 rounded border border-slate-200 disabled:opacity-40 hover:bg-slate-50"><ChevronRight size={14} /></button>
+            </div>
           </div>
         )}
-      </Card>
+      </div>
 
-      {/* Create/Edit Modal */}
-      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={selected?.id ? 'Edit Employee' : 'Add New Employee'} size="xl">
-        <form onSubmit={handleSave} className="space-y-5">
-          {error && <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>}
-          <div className="grid grid-cols-2 gap-4">
-            <Input label="First Name" required value={form.firstName} onChange={(e) => f('firstName', e.target.value)} />
-            <Input label="Last Name" required value={form.lastName} onChange={(e) => f('lastName', e.target.value)} />
-            <Input label="Email ID" type="email" required value={form.emailId} onChange={(e) => f('emailId', e.target.value)} />
-            <Input label="Mobile Number" value={form.contactNumber1} onChange={(e) => f('contactNumber1', e.target.value)} placeholder="6-9 followed by 9 digits" />
-            <Select label="Department" required value={form.department} onChange={(e) => f('department', e.target.value)}>
-              <option value="">Select Department</option>
-              {DEPARTMENTS.map((d) => <option key={d}>{d}</option>)}
-            </Select>
-            <Input label="Designation" required value={form.designation} onChange={(e) => f('designation', e.target.value)} />
-            <Input label="Basic Salary (₹)" type="number" min="0" value={form.basicEmployeeSalary} onChange={(e) => f('basicEmployeeSalary', e.target.value)} />
-            <Select label="Role" required value={form.role} onChange={(e) => f('role', e.target.value)}>
-              {ROLES.map((r) => <option key={r}>{r}</option>)}
-            </Select>
-            <Input label="Joining Date" type="date" value={form.joiningDate} onChange={(e) => f('joiningDate', e.target.value)} />
-            <Select label="Gender" value={form.gender} onChange={(e) => f('gender', e.target.value)}>
-              <option value="">Select</option>
-              <option>MALE</option><option>FEMALE</option><option>OTHER</option>
-            </Select>
-            <Input label="Date of Birth" type="date" value={form.dateOfBirth} onChange={(e) => f('dateOfBirth', e.target.value)} />
-            {!selected?.id && (
-              <Input label="Password" type="password" required value={form.password} onChange={(e) => f('password', e.target.value)} placeholder="Min 8 characters" />
+      {/* Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-slate-100">
+              <h2 className="text-lg font-semibold text-slate-800">
+                {modalMode === 'create' ? 'Add Employee' : modalMode === 'edit' ? 'Edit Employee' : 'Employee Details'}
+              </h2>
+              <button onClick={() => setShowModal(false)} className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"><X size={18} /></button>
+            </div>
+
+            {modalMode === 'view' ? (
+              <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                {[
+                  ['Employee ID', selected?.employeeId],
+                  ['Full Name', selected?.fullName],
+                  ['Email', selected?.emailId],
+                  ['Work Email', selected?.workEmail],
+                  ['Contact', selected?.contactNumber1],
+                  ['Department', selected?.department],
+                  ['Designation', selected?.designation],
+                  ['Role', selected?.role],
+                  ['Status', selected?.employmentStatus],
+                  ['Joining Date', selected?.joiningDate],
+                  ['Date of Birth', selected?.dateOfBirth],
+                  ['Gender', selected?.gender],
+                  ['Salary', selected?.basicEmployeeSalary ? `₹${Number(selected.basicEmployeeSalary).toLocaleString('en-IN')}` : '—'],
+                  ['Bank', selected?.bankName],
+                  ['IFSC', selected?.ifscCode],
+                  ['PAN', selected?.maskedPan],
+                  ['Aadhar', selected?.maskedAadhar],
+                  ['Account No', selected?.maskedAccount],
+                  ['City', selected?.city],
+                  ['State', selected?.state],
+                  ['Created By', selected?.createdBy],
+                ].map(([label, value]) => (
+                  <div key={label} className="bg-slate-50 rounded-lg p-3">
+                    <p className="text-xs text-slate-500 mb-0.5">{label}</p>
+                    <p className="font-medium text-slate-800">{value || '—'}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <form onSubmit={handleSave} className="p-6 space-y-5">
+                {formError && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm space-y-1">
+                    {formError.split('\n').map((line, i) => (
+                      <p key={i}>{line}</p>
+                    ))}
+                  </div>
+                )}
+
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Basic Info</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <Field label="Prefix" name="prefix" options={['Mr', 'Ms', 'Mrs', 'Dr']} form={form} setForm={setForm} />
+                    <Field label="First Name *" name="firstName" form={form} setForm={setForm} />
+                    <Field label="Last Name *" name="lastName" form={form} setForm={setForm} />
+                    <Field label="Email *" name="emailId" type="email" form={form} setForm={setForm} />
+                    {modalMode === 'create' && <Field label="Password *" name="password" type="password" form={form} setForm={setForm} />}
+                    <Field label="Contact Number *" name="contactNumber1" form={form} setForm={setForm} />
+                    <Field label="Date of Birth" name="dateOfBirth" type="date" form={form} setForm={setForm} />
+                    <Field label="Gender" name="gender" options={['Male', 'Female', 'Other']} form={form} setForm={setForm} />
+                    <Field label="Marital Status" name="maritalStatus" options={['Single', 'Married', 'Divorced', 'Widowed']} form={form} setForm={setForm} />
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Employment</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <Field label="Department *" name="department" form={form} setForm={setForm} />
+                    <Field label="Designation *" name="designation" form={form} setForm={setForm} />
+                    <Field label="Role" name="role" options={['EMPLOYEE', 'MANAGER', 'HR', 'ADMIN']} form={form} setForm={setForm} />
+                    <Field label="Status" name="employmentStatus" options={['ACTIVE', 'INACTIVE', 'RESIGNED', 'TERMINATED']} form={form} setForm={setForm} />
+                    <Field label="Joining Date" name="joiningDate" type="date" form={form} setForm={setForm} />
+                    <Field label="Basic Salary" name="basicEmployeeSalary" type="number" form={form} setForm={setForm} />
+                    <Field label="Work Email" name="workEmail" type="email" form={form} setForm={setForm} />
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Bank Details</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <Field label="Bank Name" name="bankName" form={form} setForm={setForm} />
+                    <Field label="Bank Branch" name="bankBranch" form={form} setForm={setForm} />
+                    <Field label="Account No" name="accountNo" form={form} setForm={setForm} />
+                    <Field label="IFSC Code" name="ifscCode" form={form} setForm={setForm} />
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Identity</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <Field label="PAN Number" name="panNumber" form={form} setForm={setForm} />
+                    <Field label="Aadhar Number" name="aadharNumber" form={form} setForm={setForm} />
+                    <Field label="Passport" name="passportNumber" form={form} setForm={setForm} />
+                    <Field label="Nationality" name="nationality" form={form} setForm={setForm} />
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Address</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <Field label="House No" name="houseNo" form={form} setForm={setForm} />
+                    <Field label="City" name="city" form={form} setForm={setForm} />
+                    <Field label="State" name="state" form={form} setForm={setForm} />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Cancel</button>
+                  <button type="submit" disabled={saving} className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium disabled:opacity-60">
+                    {saving ? 'Saving…' : modalMode === 'create' ? 'Add Employee' : 'Save Changes'}
+                  </button>
+                </div>
+              </form>
             )}
           </div>
-          <hr className="border-slate-200" />
-          <p className="text-sm font-semibold text-slate-600">Address</p>
-          <div className="grid grid-cols-3 gap-4">
-            <Input label="House No / Street" value={form.houseNo} onChange={(e) => f('houseNo', e.target.value)} />
-            <Input label="City" value={form.city} onChange={(e) => f('city', e.target.value)} />
-            <Input label="State" value={form.state} onChange={(e) => f('state', e.target.value)} />
-          </div>
-          <hr className="border-slate-200" />
-          <p className="text-sm font-semibold text-slate-600">Banking & Identification</p>
-          <div className="grid grid-cols-2 gap-4">
-            <Input label="PAN Number" value={form.panNumber} onChange={(e) => f('panNumber', e.target.value)} />
-            <Input label="Bank Account No" value={form.accountNo} onChange={(e) => f('accountNo', e.target.value)} />
-            <Input label="IFSC Code" value={form.ifscCode} onChange={(e) => f('ifscCode', e.target.value)} placeholder="e.g. SBIN0001234" />
-            <Input label="Bank Name" value={form.bankName} onChange={(e) => f('bankName', e.target.value)} />
-            <Input label="Bank Branch" value={form.bankBranch} onChange={(e) => f('bankBranch', e.target.value)} />
-          </div>
-          <div className="flex justify-end gap-3 pt-2">
-            <Button variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button>
-            <Button type="submit" loading={saving}>{selected?.id ? 'Update Employee' : 'Create Employee'}</Button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* View Modal */}
-      <Modal isOpen={viewModal} onClose={() => setViewModal(false)} title="Employee Details" size="lg">
-        {selected && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-2xl font-bold">
-                {((selected.firstName || '?')[0]).toUpperCase()}
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-slate-800">{selected.firstName} {selected.lastName}</h3>
-                <p className="text-sm text-slate-500">{selected.designation} · {selected.department}</p>
-                <Badge variant={statusBadge(selected.employmentStatus)}>{selected.employmentStatus?.replace(/_/g, ' ')}</Badge>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              {[
-                ['Email', selected.emailId], ['Mobile', selected.contactNumber1],
-                ['Salary', selected.basicEmployeeSalary ? `₹${Number(selected.basicEmployeeSalary).toLocaleString('en-IN')}` : '—'],
-                ['Joining Date', selected.joiningDate ? new Date(selected.joiningDate).toLocaleDateString('en-IN') : '—'],
-                ['Role', selected.role], ['Gender', selected.gender],
-                ['City', selected.city], ['State', selected.state],
-                ['PAN', selected.panNumber], ['Bank Acc', selected.accountNo],
-                ['IFSC', selected.ifscCode], ['Bank', selected.bankName],
-              ].map(([k, v]) => (
-                <div key={k} className="bg-slate-50 rounded-lg p-3">
-                  <p className="text-xs text-slate-400 font-medium">{k}</p>
-                  <p className="text-slate-700 mt-0.5">{v || '—'}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </Modal>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,7 +1,6 @@
-import { createContext, useState } from 'react';
+import { useState } from 'react';
 import { authAPI } from '../api/services';
-
-export const AuthContext = createContext(null);
+import { AuthContext } from './AuthContextDef';
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
@@ -17,7 +16,6 @@ export function AuthProvider({ children }) {
     setError(null);
     try {
       const res = await authAPI.login({ emailId: email, password });
-      // Response: { success, message, data: { accessToken, fullName, emailId, role, employeeId } }
       const { accessToken, fullName, emailId, role, employeeId } = res.data.data;
       const userData = { name: fullName, email: emailId, role, employeeId };
       localStorage.setItem('token', accessToken);

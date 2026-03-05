@@ -1,125 +1,209 @@
-import { useState, useEffect } from 'react';
-import { Users, Clock, CalendarDays, DollarSign, TrendingUp, UserCheck, AlertCircle } from 'lucide-react';
-import { dashboardAPI } from '../api/services';
-import StatCard from '../components/ui/StatCard';
-import Card, { CardHeader, CardBody } from '../components/ui/Card';
-import Badge, { statusBadge } from '../components/ui/Badge';
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend,
-} from 'recharts';
+import { useEffect, useState } from 'react';
+import { employeeAPI, dashboardAPI } from '../api/services';
 import { useAuth } from '../context/useAuth';
+import { Users, Clock, Calendar, UserCheck } from 'lucide-react';
 
-const PIE_COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
+const unwrap = (res) => res?.data?.data;
+
+function StatCard({ icon: Icon, label, value, color }) {
+  return (
+    <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100 flex items-center gap-4">
+      <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${color}`}>
+        <Icon size={22} className="text-white" />
+      </div>
+      <div>
+        <p className="text-sm text-slate-500 font-medium">{label}</p>
+        <p className="text-2xl font-bold text-slate-800">{value ?? '—'}</p>
+      </div>
+    </div>
+  );
+}
 
 export default function Dashboard() {
-  const { user } = useAuth();
-  const [overview, setOverview] = useState(null);
-  const [departments, setDepartments] = useState([]);
-  const [attendance, setAttendance] = useState([]);
+  const { user, isAdmin, isHR, isManager } = useAuth();
+  const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [todayAttendance, setTodayAttendance] = useState([]);
+  const [employeesList, setEmployeesList] = useState([]);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [attendanceError, setAttendanceError] = useState('');
 
   useEffect(() => {
-    const fetch = async () => {
+    const loadStatsOnly = async () => {
       try {
-        const [ov, dept, att] = await Promise.all([
-          dashboardAPI.getOverview(),
-          dashboardAPI.getDepartments(),
-          dashboardAPI.getAttendance({}),
-        ]);
-        setOverview(ov.data);
-        setDepartments(Array.isArray(dept.data) ? dept.data : []);
-        setAttendance(Array.isArray(att.data) ? att.data : []);
+        const empRes = await employeeAPI.getDashboard();
+        setStats(unwrap(empRes));
       } catch {
-        // use empty fallback data
+        // dashboard endpoint may not exist, fallback gracefully
       } finally {
         setLoading(false);
       }
     };
-    fetch();
-  }, []);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="flex items-center gap-3 text-slate-400">
-          <svg className="animate-spin h-6 w-6" viewBox="0 0 24 24" fill="none">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-          </svg>
-          Loading dashboard...
-        </div>
-      </div>
-    );
-  }
+    const loadAll = async () => {
+      const today = new Date().toISOString().slice(0, 10);
+      try {
+        const [statsRes, attendanceRes, employeesRes] = await Promise.allSettled([
+          employeeAPI.getDashboard(),
+          dashboardAPI.getAttendance({
+            attendanceDate: today,
+            page: 0,
+            size: 200,
+            sortBy: 'createdAt',
+            sortDir: 'desc',
+          }),
+          employeeAPI.getAll({
+            page: 0,
+            size: 200,
+            sortBy: 'id',
+            dir: 'asc',
+          }),
+        ]);
 
-  const stats = overview || {};
+        if (statsRes.status === 'fulfilled') {
+          setStats(unwrap(statsRes.value));
+        }
+
+        if (attendanceRes.status === 'fulfilled') {
+          const rows = attendanceRes.value?.data?.data || [];
+          setTodayAttendance(Array.isArray(rows) ? rows : []);
+        } else {
+          setTodayAttendance([]);
+        }
+
+        if (employeesRes.status === 'fulfilled') {
+          const data = unwrap(employeesRes.value);
+          const rows = Array.isArray(data) ? data : data?.content ?? [];
+          setEmployeesList(rows);
+          setAttendanceError('');
+        } else {
+          setEmployeesList([]);
+          setAttendanceError(
+            employeesRes.reason?.response?.data?.message ||
+            employeesRes.reason?.message ||
+            'Could not load employee list'
+          );
+        }
+      } catch {
+        // dashboard endpoint may not exist, fallback gracefully
+      } finally {
+        setLoading(false);
+      }
+    };
+    const shouldLoadAttendance = isAdmin || isHR || isManager;
+    if (shouldLoadAttendance) {
+      setAttendanceLoading(true);
+      loadAll().finally(() => setAttendanceLoading(false));
+    } else {
+      loadStatsOnly();
+    }
+  }, [isAdmin, isHR, isManager]);
+
+  const formatDateTime = (val) => {
+    if (!val) return '—';
+    return new Date(val).toLocaleString('en-IN', {
+      year: 'numeric',
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  };
+
+  const attendanceByEmployeeKey = todayAttendance.reduce((acc, row) => {
+    const keys = [
+      row?.employeeId,
+      row?.employeeCode,
+      row?.employee?.id,
+      row?.employee?.employeeId,
+    ].filter(Boolean).map(String);
+    keys.forEach((k) => {
+      if (!acc[k]) acc[k] = row;
+    });
+    return acc;
+  }, {});
+
+  const mergedAttendanceRows = employeesList.map((emp) => {
+    const match =
+      attendanceByEmployeeKey[String(emp?.id)] ||
+      attendanceByEmployeeKey[String(emp?.employeeId)] ||
+      null;
+    return {
+      employeeName: emp?.fullName || [emp?.firstName, emp?.lastName].filter(Boolean).join(' ') || 'Employee',
+      employeeCode: emp?.employeeId || '—',
+      checkIn: match?.checkIn || null,
+      checkOut: match?.checkOut || null,
+      status: match?.status || 'ABSENT',
+    };
+  });
+
+  const today = new Date().toLocaleDateString('en-US', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+  });
 
   return (
-    <div className="space-y-6">
-      {/* Welcome */}
-      <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 rounded-xl p-6 text-white">
-        <h2 className="text-xl font-bold">Welcome back, {user?.name || user?.email}!</h2>
-        <p className="text-indigo-200 text-sm mt-1">Here's what's happening with your organization today.</p>
+    <div className="p-6 space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-800">Dashboard</h1>
+        <p className="text-slate-500 text-sm mt-1">{today}</p>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Total Employees" value={stats.totalEmployees ?? 0} icon={Users} color="indigo" subtitle="All active employees" />
-        <StatCard title="Present Today" value={stats.presentToday ?? 0} icon={UserCheck} color="green" subtitle="Checked in today" />
-        <StatCard title="On Leave" value={stats.onLeave ?? 0} icon={CalendarDays} color="yellow" subtitle="Approved leaves today" />
-        <StatCard title="Pending Leaves" value={stats.pendingLeaves ?? 0} icon={AlertCircle} color="red" subtitle="Awaiting approval" />
-      </div>
+      {loading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="bg-white rounded-xl p-6 shadow-sm border border-slate-100 animate-pulse h-24" />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard icon={Users} label="Total Employees" value={stats?.totalEmployees} color="bg-indigo-500" />
+          <StatCard icon={UserCheck} label="Active Employees" value={stats?.activeEmployees} color="bg-green-500" />
+          <StatCard icon={Clock} label="Present Today" value={stats?.presentToday} color="bg-blue-500" />
+          <StatCard icon={Calendar} label="Pending Leaves" value={stats?.pendingLeaves} color="bg-orange-500" />
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Department chart */}
-        <Card>
-          <CardHeader title="Employees by Department" subtitle="Headcount per department" />
-          <CardBody>
-            {departments.length > 0 ? (
-              <ResponsiveContainer width="100%" height={220}>
-                <PieChart>
-                  <Pie data={departments} dataKey="count" nameKey="department" cx="50%" cy="50%" outerRadius={80} label={({ department, percent }) => `${department} ${(percent * 100).toFixed(0)}%`}>
-                    {departments.map((_, i) => (
-                      <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="flex items-center justify-center h-40 text-slate-400 text-sm">No department data available</div>
+        <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100">
+          <h2 className="text-base font-semibold text-slate-700 mb-4">Welcome back, {user?.name}</h2>
+          <div className="space-y-3 text-sm text-slate-600">
+            <div className="flex justify-between py-2 border-b border-slate-50">
+              <span>Role</span>
+              <span className="font-medium text-indigo-600">{user?.role}</span>
+            </div>
+            <div className="flex justify-between py-2 border-b border-slate-50">
+              <span>Email</span>
+              <span className="font-medium">{user?.email}</span>
+            </div>
+            {user?.employeeId && (
+              <div className="flex justify-between py-2">
+                <span>Employee ID</span>
+                <span className="font-medium">{user?.employeeId}</span>
+              </div>
             )}
-          </CardBody>
-        </Card>
+          </div>
+        </div>
 
-        {/* Attendance chart */}
-        <Card>
-          <CardHeader title="Attendance Overview" subtitle="Recent attendance trends" />
-          <CardBody>
-            {attendance.length > 0 ? (
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={attendance.slice(-7)}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip />
-                  <Bar dataKey="present" fill="#6366f1" radius={[4, 4, 0, 0]} name="Present" />
-                  <Bar dataKey="absent" fill="#ef4444" radius={[4, 4, 0, 0]} name="Absent" />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="flex items-center justify-center h-40 text-slate-400 text-sm">No attendance data available</div>
-            )}
-          </CardBody>
-        </Card>
-      </div>
-
-      {/* Quick stats bottom */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatCard title="Total Payroll" value={stats.totalPayroll ? `₹${Number(stats.totalPayroll).toLocaleString('en-IN')}` : '₹0'} icon={DollarSign} color="purple" subtitle="This month" />
-        <StatCard title="New Joinings" value={stats.newJoinings ?? 0} icon={TrendingUp} color="blue" subtitle="This month" />
-        <StatCard title="Resigned" value={stats.resigned ?? 0} icon={Users} color="red" subtitle="This month" />
+        <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100">
+          <h2 className="text-base font-semibold text-slate-700 mb-4">Quick Actions</h2>
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { label: 'Manage Employees', href: '/employees', color: 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100' },
+              { label: 'Attendance', href: '/attendance', color: 'bg-blue-50 text-blue-700 hover:bg-blue-100' },
+              { label: 'Leave Requests', href: '/leaves', color: 'bg-orange-50 text-orange-700 hover:bg-orange-100' },
+              { label: 'Payroll', href: '/payroll', color: 'bg-green-50 text-green-700 hover:bg-green-100' },
+            ].map((action) => (
+              <a
+                key={action.href}
+                href={action.href}
+                className={`rounded-lg p-3 text-sm font-medium text-center transition-colors ${action.color}`}
+              >
+                {action.label}
+              </a>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );

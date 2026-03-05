@@ -1,155 +1,204 @@
-import { useState, useEffect, useCallback } from 'react';
-import { DollarSign, PlayCircle, CheckCircle, CreditCard, RefreshCw, PauseCircle } from 'lucide-react';
-import { payrollAPI, dashboardAPI } from '../api/services';
-import Card, { CardHeader, CardBody } from '../components/ui/Card';
-import Button from '../components/ui/Button';
-import Badge, { statusBadge } from '../components/ui/Badge';
-import Table from '../components/ui/Table';
-import StatCard from '../components/ui/StatCard';
+import { useEffect, useState } from 'react';
+import { payrollAPI } from '../api/services';
 import { useAuth } from '../context/useAuth';
+import { DollarSign, Play, CheckCircle, CreditCard, FileText } from 'lucide-react';
+
+const unwrap = (res) => res?.data?.data;
+
+const STATUS_STYLES = {
+  GENERATED: 'bg-blue-100 text-blue-700',
+  PENDING: 'bg-blue-100 text-blue-700',
+  APPROVED: 'bg-yellow-100 text-yellow-700',
+  PAID: 'bg-green-100 text-green-700',
+  FAILED: 'bg-red-100 text-red-600',
+};
 
 export default function Payroll() {
-  const { isAdmin, isHR } = useAuth();
+  const { isAdmin, isHR, isEmployee, user } = useAuth();
+  const canManage = isAdmin || isHR;
+
+  const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+  const [month, setMonth] = useState(currentMonth);
   const [payrolls, setPayrolls] = useState([]);
-  const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [actionLoading, setActionLoading] = useState({});
-  const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const [selectedMonth, setSelectedMonth] = useState(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  });
+  const [actionLoading, setActionLoading] = useState(null);
 
-  const fetchPayroll = useCallback(async () => {
+  const fetchPayroll = async () => {
     setLoading(true);
+    setError('');
     try {
-      const [payRes, sumRes] = await Promise.all([
-        payrollAPI.getByMonth(selectedMonth),
-        payrollAPI.getSummary(selectedMonth),
-      ]);
-      setPayrolls(payRes.data?.content || payRes.data || []);
-      setSummary(sumRes.data);
-    } catch { setPayrolls([]); } finally { setLoading(false); }
-  }, [selectedMonth]);
-
-  useEffect(() => { fetchPayroll(); }, [fetchPayroll]);
-
-  const showMsg = (msg, isError = false) => {
-    if (isError) setError(msg);
-    else setMessage(msg);
-    setTimeout(() => { setMessage(''); setError(''); }, 4000);
-  };
-
-  const action = async (id, fn, label) => {
-    setActionLoading((p) => ({ ...p, [id]: true }));
-    try {
-      await fn();
-      showMsg(`${label} successful!`);
-      fetchPayroll();
+      let res;
+      if (isEmployee) {
+        res = await payrollAPI.getMyPayslips();
+        const data = unwrap(res);
+        setPayrolls(Array.isArray(data) ? data : data?.content ?? []);
+      } else {
+        // Backend expects full date (YYYY-MM-01) as month
+        const monthParam = `${month}-01`;
+        res = await payrollAPI.getByMonth(monthParam, { page: 0, size: 50 });
+        const data = unwrap(res);
+        setPayrolls(Array.isArray(data) ? data : data?.content ?? []);
+      }
     } catch (e) {
-      showMsg(e.response?.data?.message || `${label} failed`, true);
+      const msg = e.response?.data?.message || e.message || 'Failed to load payroll';
+      setError(`Failed to load payroll: ${msg}`);
     } finally {
-      setActionLoading((p) => ({ ...p, [id]: false }));
+      setLoading(false);
     }
   };
 
+  useEffect(() => { fetchPayroll(); }, [month]);
+
   const handleGenerate = async () => {
-    setActionLoading((p) => ({ ...p, generate: true }));
+    setActionLoading('generate');
     try {
-      await payrollAPI.generate(selectedMonth);
-      showMsg('Payroll generated successfully!');
+      const monthParam = `${month}-01`;
+      await payrollAPI.generate(monthParam);
       fetchPayroll();
     } catch (e) {
-      showMsg(e.response?.data?.message || 'Generation failed', true);
-    } finally { setActionLoading((p) => ({ ...p, generate: false })); }
+      alert(e.response?.data?.message || e.message);
+    } finally {
+      setActionLoading(null);
+    }
   };
 
-  const columns = [
-    {
-      key: 'employee', label: 'Employee',
-      render: (v, r) => (
-        <div>
-          <p className="font-medium text-slate-800">{r.employeeName || `${r.employee?.firstName || ''} ${r.employee?.lastName || ''}`.trim() || '—'}</p>
-          <p className="text-xs text-slate-400">{r.employee?.department || r.department || ''}</p>
-        </div>
-      ),
-    },
-    { key: 'month', label: 'Month', render: (v) => v || selectedMonth },
-    { key: 'grossSalary', label: 'Gross', render: (v) => v ? `₹${Number(v).toLocaleString('en-IN')}` : '—' },
-    { key: 'totalDeductions', label: 'Deductions', render: (v) => v ? `₹${Number(v).toLocaleString('en-IN')}` : '—' },
-    { key: 'netSalary', label: 'Net Salary', render: (v) => v ? <span className="font-semibold text-green-700">₹{Number(v).toLocaleString('en-IN')}</span> : '—' },
-    {
-      key: 'status', label: 'Status',
-      render: (v) => <Badge variant={statusBadge(v)}>{v}</Badge>,
-    },
-    {
-      key: 'paymentDate', label: 'Paid On',
-      render: (v) => v ? new Date(v).toLocaleDateString('en-IN') : '—',
-    },
-    {
-      key: 'actions', label: 'Actions',
-      render: (_, r) => isAdmin ? (
-        <div className="flex items-center gap-1 flex-wrap">
-          {r.status === 'PENDING' && (
-            <button
-              onClick={() => action(r.id, () => payrollAPI.approve(r.id), 'Approve')}
-              disabled={actionLoading[r.id]}
-              className="flex items-center gap-1 px-2 py-1 text-xs bg-green-50 text-green-700 rounded-md hover:bg-green-100 disabled:opacity-50"
-            >
-              <CheckCircle size={12} /> Approve
-            </button>
-          )}
-          {r.status === 'APPROVED' && (
-            <button
-              onClick={() => action(r.id, () => payrollAPI.processPayment(r.id), 'Payment')}
-              disabled={actionLoading[r.id]}
-              className="flex items-center gap-1 px-2 py-1 text-xs bg-indigo-50 text-indigo-700 rounded-md hover:bg-indigo-100 disabled:opacity-50"
-            >
-              <CreditCard size={12} /> Pay
-            </button>
-          )}
-        </div>
-      ) : null,
-    },
-  ];
+  const handleApprove = async (id) => {
+    setActionLoading(id);
+    try {
+      await payrollAPI.approve(id);
+      fetchPayroll();
+    } catch (e) {
+      alert(e.response?.data?.message || e.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleProcess = async (id) => {
+    setActionLoading(`pay-${id}`);
+    try {
+      await payrollAPI.processPayment(id);
+      fetchPayroll();
+    } catch (e) {
+      alert(e.response?.data?.message || e.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const totalNet = payrolls.reduce((sum, p) => sum + (p.netSalary || 0), 0);
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h2 className="text-xl font-bold text-slate-800">Payroll Management</h2>
+    <div className="p-6 space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800">Payroll</h1>
+          <p className="text-slate-500 text-sm mt-0.5">{isEmployee ? 'My payslips' : `${payrolls.length} records`}</p>
+        </div>
         <div className="flex items-center gap-3">
-          <input
-            type="month"
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-            className="px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-          {isAdmin && (
-            <Button onClick={handleGenerate} loading={actionLoading.generate}>
-              <PlayCircle size={16} /> Generate Payroll
-            </Button>
+          {!isEmployee && (
+            <input
+              type="month"
+              value={month}
+              onChange={e => setMonth(e.target.value)}
+              className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            />
+          )}
+          {canManage && (
+            <button
+              onClick={handleGenerate}
+              disabled={actionLoading === 'generate'}
+              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors disabled:opacity-60"
+            >
+              <Play size={15} /> {actionLoading === 'generate' ? 'Generating…' : 'Generate'}
+            </button>
           )}
         </div>
       </div>
 
-      {message && <div className="px-4 py-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">{message}</div>}
-      {error && <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>}
-
-      {/* Summary */}
-      {summary && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard title="Total Employees" value={summary.totalEmployees ?? 0} icon={DollarSign} color="indigo" />
-          <StatCard title="Paid" value={summary.paid ?? 0} icon={CheckCircle} color="green" />
-          <StatCard title="Pending" value={summary.pending ?? 0} icon={PauseCircle} color="yellow" />
-          <StatCard title="Total Payout" value={summary.totalPayout ? `₹${Number(summary.totalPayout).toLocaleString('en-IN')}` : '₹0'} icon={CreditCard} color="purple" />
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+          <strong>Error:</strong> {error}
         </div>
       )}
 
-      <Card>
-        <CardHeader title={`Payroll — ${selectedMonth}`} subtitle="Monthly salary records" />
-        <Table columns={columns} data={payrolls} loading={loading} emptyMessage="No payroll records. Click 'Generate Payroll' to create them." />
-      </Card>
+      {canManage && payrolls.length > 0 && (
+        <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 flex items-center gap-3">
+          <DollarSign size={20} className="text-indigo-600" />
+          <div>
+            <p className="text-xs text-indigo-500 font-medium">Total Net Payroll</p>
+            <p className="text-xl font-bold text-indigo-700">₹{totalNet.toLocaleString('en-IN')}</p>
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50">
+              {['Employee', 'Month', 'Basic Salary', 'Deductions', 'Net Salary', 'Status', canManage ? 'Actions' : ''].filter(Boolean).map(h => (
+                <th key={h} className="text-left py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              [...Array(4)].map((_, i) => (
+                <tr key={i} className="border-b border-slate-50">
+                  {[...Array(6)].map((_, j) => (
+                    <td key={j} className="py-3 px-4"><div className="h-4 bg-slate-100 rounded animate-pulse" /></td>
+                  ))}
+                </tr>
+              ))
+            ) : payrolls.length === 0 ? (
+              <tr><td colSpan={7} className="py-10 text-center text-slate-400">No payroll records for this month</td></tr>
+            ) : (
+              payrolls.map(p => (
+                <tr key={p.payrollId || p.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                  <td className="py-3 px-4">
+                    <div className="font-medium text-slate-800">{p.employeeName || p.employeeId}</div>
+                    <div className="text-xs text-slate-400">{p.employeeId}</div>
+                  </td>
+                  <td className="py-3 px-4 text-slate-600 font-mono text-xs">{p.month}</td>
+                  <td className="py-3 px-4 text-slate-700">₹{(p.basicSalary || 0).toLocaleString('en-IN')}</td>
+                  <td className="py-3 px-4 text-red-500">-₹{(p.totalDeductions || 0).toLocaleString('en-IN')}</td>
+                  <td className="py-3 px-4 font-semibold text-green-600">₹{(p.netSalary || 0).toLocaleString('en-IN')}</td>
+                  <td className="py-3 px-4">
+                    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLES[p.status] || 'bg-slate-100 text-slate-600'}`}>
+                      {p.status}
+                    </span>
+                  </td>
+                  {canManage && (
+                    <td className="py-3 px-4">
+                      <div className="flex gap-2">
+                        {p.status === 'GENERATED' || p.status === 'PENDING' ? (
+                          <button
+                            onClick={() => handleApprove(p.payrollId || p.id)}
+                            disabled={actionLoading === (p.payrollId || p.id)}
+                            className="flex items-center gap-1 px-2.5 py-1 bg-yellow-100 text-yellow-700 hover:bg-yellow-200 rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
+                          >
+                            <CheckCircle size={12} /> {actionLoading === (p.payrollId || p.id) ? '…' : 'Approve'}
+                          </button>
+                        ) : null}
+                        {p.status === 'APPROVED' && (
+                          <button
+                            onClick={() => handleProcess(p.payrollId || p.id)}
+                            disabled={actionLoading === `pay-${p.payrollId || p.id}`}
+                            className="flex items-center gap-1 px-2.5 py-1 bg-green-100 text-green-700 hover:bg-green-200 rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
+                          >
+                            <CreditCard size={12} /> {actionLoading === `pay-${p.payrollId || p.id}` ? '…' : 'Pay'}
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

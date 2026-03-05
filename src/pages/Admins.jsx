@@ -1,150 +1,187 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Plus, Edit2, Trash2, ToggleLeft, ToggleRight } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { adminAPI } from '../api/services';
-import Card from '../components/ui/Card';
-import Button from '../components/ui/Button';
-import Badge, { statusBadge } from '../components/ui/Badge';
-import Table from '../components/ui/Table';
-import Modal from '../components/ui/Modal';
-import Input, { Select } from '../components/ui/Input';
+import { Plus, X, ToggleLeft, ToggleRight, Trash2, Eye } from 'lucide-react';
 
-const emptyForm = { name: '', email: '', password: '', phone: '', department: '', designation: '', role: 'ADMIN' };
-const DEPARTMENTS = ['HR', 'Admin', 'IT', 'Finance', 'Operations'];
+const unwrap = (res) => res?.data?.data;
+
+const EMPTY = {
+  firstName: '', lastName: '', emailId: '', password: '',
+  contactNumber1: '', department: '', role: 'ADMIN',
+};
 
 export default function Admins() {
   const [admins, setAdmins] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [showModal, setShowModal] = useState(false);
-  const [selected, setSelected] = useState(null);
-  const [form, setForm] = useState(emptyForm);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
 
-  const fetchAdmins = useCallback(async () => {
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState(EMPTY);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
+
+  const fetchAdmins = async () => {
     setLoading(true);
+    setError('');
     try {
-      const res = await adminAPI.getAll();
-      setAdmins(res.data?.content || res.data || []);
-    } catch { setAdmins([]); } finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => { fetchAdmins(); }, [fetchAdmins]);
-
-  const openCreate = () => { setSelected(null); setForm(emptyForm); setShowModal(true); };
-  const openEdit = (a) => { setSelected(a); setForm({ ...emptyForm, ...a, password: '' }); setShowModal(true); };
-
-  const handleSave = async (e) => {
-    e.preventDefault();
-    setSaving(true); setError('');
-    try {
-      if (selected?.id) {
-        await adminAPI.update(selected.id, form);
-      } else {
-        await adminAPI.register(form);
-      }
-      setMessage(selected?.id ? 'Admin updated!' : 'Admin registered!');
-      setShowModal(false);
-      fetchAdmins();
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to save');
-    } finally { setSaving(false); }
+      const res = await adminAPI.getAll({ page: 0, size: 50 });
+      const data = unwrap(res);
+      setAdmins(Array.isArray(data) ? data : data?.content ?? []);
+    } catch (e) {
+      setError(`Failed to load admins: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleDelete = async (id) => {
-    if (!confirm('Delete this admin?')) return;
-    await adminAPI.delete(id);
-    setMessage('Admin deleted.');
-    fetchAdmins();
+  useEffect(() => { fetchAdmins(); }, []);
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setFormError('');
+    try {
+      await adminAPI.register(form);
+      setShowModal(false);
+      setForm(EMPTY);
+      fetchAdmins();
+    } catch (e) {
+      setFormError(e.response?.data?.message || e.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleToggle = async (id) => {
-    await adminAPI.toggleActive(id);
-    fetchAdmins();
+    try {
+      await adminAPI.toggleActive(id);
+      fetchAdmins();
+    } catch (e) {
+      alert(e.response?.data?.message || e.message);
+    }
   };
 
-  const f = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+  const handleDelete = async (admin) => {
+    if (!confirm(`Delete admin ${admin.fullName || admin.emailId}?`)) return;
+    try {
+      await adminAPI.delete(admin.id);
+      fetchAdmins();
+    } catch (e) {
+      alert(e.response?.data?.message || e.message);
+    }
+  };
 
-  const columns = [
-    {
-      key: 'name', label: 'Admin',
-      render: (v, r) => (
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-sm font-bold">
-            {(v || r.email || '?')[0].toUpperCase()}
-          </div>
-          <div>
-            <p className="font-medium text-slate-800">{v || '—'}</p>
-            <p className="text-xs text-slate-400">{r.email}</p>
-          </div>
-        </div>
-      ),
-    },
-    { key: 'role', label: 'Role', render: (v) => <Badge variant="purple">{v}</Badge> },
-    { key: 'department', label: 'Department' },
-    { key: 'designation', label: 'Designation' },
-    { key: 'phone', label: 'Phone' },
-    {
-      key: 'active', label: 'Status',
-      render: (v) => <Badge variant={v ? 'success' : 'danger'}>{v ? 'Active' : 'Inactive'}</Badge>,
-    },
-    {
-      key: 'actions', label: 'Actions',
-      render: (_, r) => (
-        <div className="flex items-center gap-1">
-          <button onClick={() => handleToggle(r.id)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title={r.active ? 'Deactivate' : 'Activate'}>
-            {r.active ? <ToggleRight size={16} className="text-green-500" /> : <ToggleLeft size={16} />}
-          </button>
-          <button onClick={() => openEdit(r)} className="p-1.5 text-slate-400 hover:text-yellow-600 hover:bg-yellow-50 rounded-lg transition-colors">
-            <Edit2 size={15} />
-          </button>
-          <button onClick={() => handleDelete(r.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-            <Trash2 size={15} />
-          </button>
-        </div>
-      ),
-    },
-  ];
+  const Field = ({ label, name, type = 'text', options }) => (
+    <div>
+      <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
+      {options ? (
+        <select value={form[name] ?? ''} onChange={e => setForm(f => ({ ...f, [name]: e.target.value }))}
+          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+          {options.map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+      ) : (
+        <input type={type} value={form[name] ?? ''} onChange={e => setForm(f => ({ ...f, [name]: e.target.value }))}
+          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+      )}
+    </div>
+  );
 
   return (
-    <div className="space-y-5">
+    <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-slate-800">Admin Users</h2>
-        <Button onClick={openCreate}><Plus size={16} /> Add Admin</Button>
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800">Admin Users</h1>
+          <p className="text-slate-500 text-sm mt-0.5">{admins.length} administrators</p>
+        </div>
+        <button onClick={() => { setForm(EMPTY); setFormError(''); setShowModal(true); }}
+          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors">
+          <Plus size={16} /> Add Admin
+        </button>
       </div>
 
-      {message && <div className="px-4 py-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">{message}</div>}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+          <strong>Error:</strong> {error}
+        </div>
+      )}
 
-      <Card>
-        <Table columns={columns} data={admins} loading={loading} emptyMessage="No admin users found" />
-      </Card>
+      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50">
+              {['Name', 'Email', 'Role', 'Department', 'Status', 'Actions'].map(h => (
+                <th key={h} className="text-left py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              [...Array(3)].map((_, i) => (
+                <tr key={i} className="border-b border-slate-50">
+                  {[...Array(6)].map((_, j) => (
+                    <td key={j} className="py-3 px-4"><div className="h-4 bg-slate-100 rounded animate-pulse" /></td>
+                  ))}
+                </tr>
+              ))
+            ) : admins.length === 0 ? (
+              <tr><td colSpan={6} className="py-10 text-center text-slate-400">No admin users found</td></tr>
+            ) : (
+              admins.map(admin => (
+                <tr key={admin.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                  <td className="py-3 px-4 font-medium text-slate-800">{admin.fullName || `${admin.firstName} ${admin.lastName}`}</td>
+                  <td className="py-3 px-4 text-slate-500">{admin.emailId}</td>
+                  <td className="py-3 px-4">
+                    <span className="bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full text-xs font-medium">{admin.role}</span>
+                  </td>
+                  <td className="py-3 px-4 text-slate-600">{admin.department || '—'}</td>
+                  <td className="py-3 px-4">
+                    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${admin.active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                      {admin.active ? 'Active' : 'Inactive'}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4">
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => handleToggle(admin.id)} title={admin.active ? 'Deactivate' : 'Activate'}
+                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors">
+                        {admin.active ? <ToggleRight size={16} className="text-green-500" /> : <ToggleLeft size={16} />}
+                      </button>
+                      <button onClick={() => handleDelete(admin)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"><Trash2 size={14} /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
 
-      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={selected?.id ? 'Edit Admin' : 'Register Admin'}>
-        <form onSubmit={handleSave} className="space-y-4">
-          {error && <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>}
-          <Input label="Full Name" required value={form.name} onChange={(e) => f('name', e.target.value)} />
-          <Input label="Email" type="email" required value={form.email} onChange={(e) => f('email', e.target.value)} />
-          {!selected?.id && (
-            <Input label="Password" type="password" required value={form.password} onChange={(e) => f('password', e.target.value)} />
-          )}
-          <Input label="Phone" value={form.phone} onChange={(e) => f('phone', e.target.value)} />
-          <div className="grid grid-cols-2 gap-4">
-            <Select label="Department" value={form.department} onChange={(e) => f('department', e.target.value)}>
-              <option value="">Select</option>
-              {DEPARTMENTS.map((d) => <option key={d}>{d}</option>)}
-            </Select>
-            <Select label="Role" value={form.role} onChange={(e) => f('role', e.target.value)}>
-              <option value="ADMIN">ADMIN</option>
-              <option value="SUPER_ADMIN">SUPER ADMIN</option>
-            </Select>
+      {showModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between p-6 border-b border-slate-100">
+              <h2 className="text-lg font-semibold">Add Admin User</h2>
+              <button onClick={() => setShowModal(false)} className="p-1.5 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
+            </div>
+            <form onSubmit={handleCreate} className="p-6 space-y-3">
+              {formError && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{formError}</div>}
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="First Name *" name="firstName" />
+                <Field label="Last Name *" name="lastName" />
+              </div>
+              <Field label="Email *" name="emailId" type="email" />
+              <Field label="Password *" name="password" type="password" />
+              <Field label="Contact Number" name="contactNumber1" />
+              <Field label="Department" name="department" />
+              <Field label="Role" name="role" options={['ADMIN', 'HR', 'MANAGER']} />
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Cancel</button>
+                <button type="submit" disabled={saving} className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium disabled:opacity-60">
+                  {saving ? 'Creating…' : 'Create Admin'}
+                </button>
+              </div>
+            </form>
           </div>
-          <Input label="Designation" value={form.designation} onChange={(e) => f('designation', e.target.value)} />
-          <div className="flex justify-end gap-3">
-            <Button variant="secondary" onClick={() => setShowModal(false)}>Cancel</Button>
-            <Button type="submit" loading={saving}>{selected?.id ? 'Update' : 'Register'}</Button>
-          </div>
-        </form>
-      </Modal>
+        </div>
+      )}
     </div>
   );
 }

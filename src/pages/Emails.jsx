@@ -1,155 +1,178 @@
-import { useState, useEffect } from 'react';
-import { Search, Send, AlertCircle, CheckCircle, RefreshCw } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { emailAPI } from '../api/services';
-import Card, { CardHeader, CardBody } from '../components/ui/Card';
-import Button from '../components/ui/Button';
-import Badge from '../components/ui/Badge';
-import Table from '../components/ui/Table';
-import Modal from '../components/ui/Modal';
-import Input, { Textarea } from '../components/ui/Input';
+import { Send, RefreshCw, Search, AlertCircle, CheckCircle, Mail } from 'lucide-react';
+
+const unwrap = (res) => res?.data?.data;
 
 export default function Emails() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [tab, setTab] = useState('all');
-  const [searchEmail, setSearchEmail] = useState('');
-  const [showBroadcast, setShowBroadcast] = useState(false);
-  const [form, setForm] = useState({ recipients: '', subject: '', body: '' });
-  const [sending, setSending] = useState(false);
-  const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [searchEmail, setSearchEmail] = useState('');
 
-  useEffect(() => { fetchLogs(); }, [tab]);
+  const [showBroadcast, setShowBroadcast] = useState(false);
+  const [form, setForm] = useState({ subject: '', body: '', recipientType: 'ALL' });
+  const [sending, setSending] = useState(false);
+  const [sendStatus, setSendStatus] = useState('');
 
   const fetchLogs = async () => {
     setLoading(true);
+    setError('');
     try {
-      let res;
-      if (tab === 'failed') res = await emailAPI.getFailedLogs();
-      else res = await emailAPI.getLogs();
-      setLogs(res.data || []);
-    } catch { setLogs([]); } finally { setLoading(false); }
+      const res = searchEmail.trim()
+        ? await emailAPI.searchLogs(searchEmail.trim())
+        : await emailAPI.getLogs();
+      const data = unwrap(res);
+      setLogs(Array.isArray(data) ? data : data?.content ?? []);
+    } catch (e) {
+      setError(`Failed to load email logs: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleSearch = async () => {
-    if (!searchEmail.trim()) return fetchLogs();
-    setLoading(true);
-    try {
-      const res = await emailAPI.searchLogs(searchEmail);
-      setLogs(res.data || []);
-    } catch { setLogs([]); } finally { setLoading(false); }
-  };
+  useEffect(() => { fetchLogs(); }, []);
 
   const handleBroadcast = async (e) => {
     e.preventDefault();
-    setSending(true); setError('');
+    setSending(true);
+    setSendStatus('');
     try {
-      const recipients = form.recipients.split(',').map((r) => r.trim()).filter(Boolean);
-      await emailAPI.broadcast({ recipients, subject: form.subject, body: form.body });
-      setMessage(`Email sent to ${recipients.length} recipient(s)!`);
-      setShowBroadcast(false);
-      setForm({ recipients: '', subject: '', body: '' });
-      fetchLogs();
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to send email');
-    } finally { setSending(false); }
+      await emailAPI.broadcast(form);
+      setSendStatus('success');
+      setForm({ subject: '', body: '', recipientType: 'ALL' });
+      setTimeout(() => { setShowBroadcast(false); setSendStatus(''); fetchLogs(); }, 1500);
+    } catch (ex) {
+      setSendStatus(ex.response?.data?.message || ex.message);
+    } finally {
+      setSending(false);
+    }
   };
 
-  const columns = [
-    { key: 'recipientEmail', label: 'Recipient' },
-    { key: 'subject', label: 'Subject', render: (v) => v ? (v.length > 40 ? v.slice(0, 40) + '...' : v) : '—' },
-    { key: 'emailType', label: 'Type', render: (v) => <Badge variant="info">{v || 'GENERAL'}</Badge> },
-    {
-      key: 'status', label: 'Status',
-      render: (v) => (
-        <div className="flex items-center gap-1.5">
-          {v === 'SENT' ? <CheckCircle size={14} className="text-green-500" /> : <AlertCircle size={14} className="text-red-500" />}
-          <Badge variant={v === 'SENT' ? 'success' : 'danger'}>{v}</Badge>
-        </div>
-      ),
-    },
-    { key: 'errorMessage', label: 'Error', render: (v) => v ? <span className="text-xs text-red-500">{v}</span> : '—' },
-    {
-      key: 'sentAt', label: 'Sent At',
-      render: (v) => v ? new Date(v).toLocaleString('en-IN') : '—',
-    },
-  ];
-
   return (
-    <div className="space-y-5">
+    <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-slate-800">Email Logs</h2>
-        <Button onClick={() => setShowBroadcast(true)}><Send size={16} /> Broadcast Email</Button>
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800">Email Logs</h1>
+          <p className="text-slate-500 text-sm mt-0.5">{logs.length} records</p>
+        </div>
+        <div className="flex gap-3">
+          <button onClick={fetchLogs} className="flex items-center gap-2 border border-slate-200 text-slate-600 text-sm font-medium px-3 py-2.5 rounded-lg hover:bg-slate-50 transition-colors">
+            <RefreshCw size={15} /> Refresh
+          </button>
+          <button onClick={() => setShowBroadcast(true)} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors">
+            <Send size={15} /> Broadcast Email
+          </button>
+        </div>
       </div>
 
-      {message && <div className="px-4 py-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">{message}</div>}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+          <strong>Error:</strong> {error}
+        </div>
+      )}
 
-      {/* Tabs & Search */}
-      <Card>
-        <CardBody className="flex flex-wrap items-center gap-3 py-3">
-          <div className="flex gap-1 bg-slate-100 p-1 rounded-lg">
-            {['all', 'failed'].map((t) => (
-              <button
-                key={t}
-                onClick={() => setTab(t)}
-                className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${tab === t ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
-              >
-                {t === 'all' ? 'All Emails' : 'Failed Emails'}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-2 flex-1 min-w-48">
-            <div className="relative flex-1">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                placeholder="Search by recipient email..."
-                value={searchEmail}
-                onChange={(e) => setSearchEmail(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              />
-            </div>
-            <Button size="sm" variant="secondary" onClick={handleSearch}>Search</Button>
-            <Button size="sm" variant="ghost" onClick={fetchLogs}><RefreshCw size={14} /></Button>
-          </div>
-        </CardBody>
-      </Card>
+      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 space-y-3">
+        <div className="relative max-w-sm">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="email"
+            placeholder="Search by email…"
+            value={searchEmail}
+            onChange={e => setSearchEmail(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && fetchLogs()}
+            className="w-full pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          />
+        </div>
 
-      <Card>
-        <Table columns={columns} data={logs} loading={loading} emptyMessage="No email logs found" />
-      </Card>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-100">
+              {['Recipient', 'Subject', 'Type', 'Sent At', 'Status'].map(h => (
+                <th key={h} className="text-left py-3 px-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              [...Array(4)].map((_, i) => (
+                <tr key={i} className="border-b border-slate-50">
+                  {[...Array(5)].map((_, j) => (
+                    <td key={j} className="py-3 px-3"><div className="h-4 bg-slate-100 rounded animate-pulse" /></td>
+                  ))}
+                </tr>
+              ))
+            ) : logs.length === 0 ? (
+              <tr><td colSpan={5} className="py-10 text-center text-slate-400">No email logs found</td></tr>
+            ) : (
+              logs.map((log, i) => (
+                <tr key={log.id || i} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                  <td className="py-3 px-3 text-slate-700">{log.recipientEmail}</td>
+                  <td className="py-3 px-3 text-slate-600 max-w-xs truncate">{log.subject}</td>
+                  <td className="py-3 px-3">
+                    <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-xs font-medium">{log.emailType || '—'}</span>
+                  </td>
+                  <td className="py-3 px-3 text-slate-500 text-xs font-mono">{log.sentAt ? new Date(log.sentAt).toLocaleString() : '—'}</td>
+                  <td className="py-3 px-3">
+                    {log.success || log.status === 'SENT' ? (
+                      <span className="flex items-center gap-1 text-green-600 text-xs font-medium"><CheckCircle size={12} /> Sent</span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-red-500 text-xs font-medium"><AlertCircle size={12} /> Failed</span>
+                    )}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
 
       {/* Broadcast Modal */}
-      <Modal isOpen={showBroadcast} onClose={() => setShowBroadcast(false)} title="Broadcast Email">
-        <form onSubmit={handleBroadcast} className="space-y-4">
-          {error && <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>}
-          <Input
-            label="Recipients (comma-separated emails)"
-            required
-            placeholder="user1@example.com, user2@example.com"
-            value={form.recipients}
-            onChange={(e) => setForm({ ...form, recipients: e.target.value })}
-          />
-          <Input
-            label="Subject"
-            required
-            value={form.subject}
-            onChange={(e) => setForm({ ...form, subject: e.target.value })}
-          />
-          <Textarea
-            label="Email Body"
-            required
-            rows={5}
-            value={form.body}
-            onChange={(e) => setForm({ ...form, body: e.target.value })}
-            placeholder="Enter your message..."
-          />
-          <div className="flex justify-end gap-3">
-            <Button variant="secondary" onClick={() => setShowBroadcast(false)}>Cancel</Button>
-            <Button type="submit" loading={sending}><Send size={15} /> Send Email</Button>
+      {showBroadcast && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+            <div className="flex items-center justify-between p-6 border-b border-slate-100">
+              <h2 className="text-lg font-semibold flex items-center gap-2"><Mail size={18} /> Send Broadcast Email</h2>
+              <button onClick={() => setShowBroadcast(false)} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500">✕</button>
+            </div>
+            <form onSubmit={handleBroadcast} className="p-6 space-y-4">
+              {sendStatus && sendStatus !== 'success' && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{sendStatus}</div>
+              )}
+              {sendStatus === 'success' && (
+                <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm flex items-center gap-2">
+                  <CheckCircle size={16} /> Email broadcast sent successfully!
+                </div>
+              )}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Recipients</label>
+                <select value={form.recipientType} onChange={e => setForm(f => ({ ...f, recipientType: e.target.value }))}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                  {['ALL', 'EMPLOYEES', 'ADMINS', 'HR', 'MANAGERS'].map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Subject *</label>
+                <input required type="text" value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))}
+                  placeholder="Email subject…"
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Message *</label>
+                <textarea required rows={6} value={form.body} onChange={e => setForm(f => ({ ...f, body: e.target.value }))}
+                  placeholder="Enter email message…"
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none" />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" onClick={() => setShowBroadcast(false)} className="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Cancel</button>
+                <button type="submit" disabled={sending} className="flex items-center gap-2 px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium disabled:opacity-60">
+                  <Send size={14} /> {sending ? 'Sending…' : 'Send Email'}
+                </button>
+              </div>
+            </form>
           </div>
-        </form>
-      </Modal>
+        </div>
+      )}
     </div>
   );
 }

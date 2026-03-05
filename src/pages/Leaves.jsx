@@ -1,175 +1,228 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Plus, Check, X, Clock } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { leaveAPI } from '../api/services';
-import Card, { CardHeader, CardBody } from '../components/ui/Card';
-import Button from '../components/ui/Button';
-import Badge, { statusBadge } from '../components/ui/Badge';
-import Table from '../components/ui/Table';
-import Modal from '../components/ui/Modal';
-import Input, { Select, Textarea } from '../components/ui/Input';
 import { useAuth } from '../context/useAuth';
+import { Plus, X, CheckCircle, XCircle, Clock } from 'lucide-react';
 
-const LEAVE_TYPES = ['CASUAL', 'SICK', 'EARNED', 'MATERNITY', 'PATERNITY', 'UNPAID', 'COMPENSATORY'];
+const unwrap = (res) => res?.data?.data;
+
+const STATUS_STYLES = {
+  PENDING: 'bg-yellow-100 text-yellow-700',
+  APPROVED: 'bg-green-100 text-green-700',
+  REJECTED: 'bg-red-100 text-red-600',
+};
 
 export default function Leaves() {
-  const { user, isAdmin, isHR, isEmployee } = useAuth();
+  const { user, isAdmin, isHR, isManager } = useAuth();
+  const canManage = isAdmin || isHR || isManager;
+
   const [leaves, setLeaves] = useState([]);
-  const [pendingLeaves, setPendingLeaves] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [tab, setTab] = useState('all');
-  const [showApply, setShowApply] = useState(false);
-  const [showReject, setShowReject] = useState(false);
-  const [selectedLeave, setSelectedLeave] = useState(null);
-  const [rejectReason, setRejectReason] = useState('');
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
-  const [form, setForm] = useState({ leaveType: 'CASUAL', startDate: '', endDate: '', reason: '' });
 
-  const fetchLeaves = useCallback(async () => {
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState({ leaveType: '', fromDate: '', toDate: '', reason: '' });
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
+
+  const [rejectModal, setRejectModal] = useState(null);
+  const [rejectReason, setRejectReason] = useState('');
+
+  const fetchLeaves = async () => {
     setLoading(true);
+    setError('');
     try {
-      if (tab === 'pending') {
-        const res = await leaveAPI.getPending();
-        setPendingLeaves(res.data?.content || res.data || []);
-      } else if (user?.employeeId) {
-        const res = await leaveAPI.getByEmployee(user.employeeId);
-        setLeaves(res.data?.content || res.data || []);
+      let res;
+      if (canManage) {
+        res = await leaveAPI.getPending({ page: 0, size: 50 });
       } else {
-        const res = await leaveAPI.getPending();
-        setLeaves(res.data?.content || res.data || []);
+        res = await leaveAPI.getByEmployee(user.employeeId, { page: 0, size: 50 });
       }
-    } catch { setLeaves([]); setPendingLeaves([]); } finally { setLoading(false); }
-  }, [tab, user]);
+      const data = unwrap(res);
+      setLeaves(Array.isArray(data) ? data : data?.content ?? []);
+    } catch (e) {
+      setError(`Failed to load leaves: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  useEffect(() => { fetchLeaves(); }, [fetchLeaves]);
+  useEffect(() => { fetchLeaves(); }, []);
 
   const handleApply = async (e) => {
     e.preventDefault();
-    setSaving(true); setError('');
+    setSaving(true);
+    setFormError('');
     try {
-      await leaveAPI.apply(form);
-      setMessage('Leave applied successfully!');
-      setShowApply(false);
-      setForm({ leaveType: 'CASUAL', startDate: '', endDate: '', reason: '' });
+      await leaveAPI.apply({ ...form, employeeId: user.employeeId });
+      setShowModal(false);
+      setForm({ leaveType: '', fromDate: '', toDate: '', reason: '' });
       fetchLeaves();
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to apply leave');
-    } finally { setSaving(false); }
+    } catch (e) {
+      setFormError(e.response?.data?.message || e.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleApprove = async (id) => {
-    await leaveAPI.approve(id);
-    setMessage('Leave approved!');
-    fetchLeaves();
+    try {
+      await leaveAPI.approve(id);
+      fetchLeaves();
+    } catch (e) {
+      alert(e.response?.data?.message || e.message);
+    }
   };
 
   const handleReject = async () => {
-    if (!rejectReason.trim()) return;
-    setSaving(true);
-    await leaveAPI.reject(selectedLeave.id, rejectReason);
-    setShowReject(false);
-    setMessage('Leave rejected.');
-    fetchLeaves();
-    setSaving(false);
+    try {
+      await leaveAPI.reject(rejectModal, rejectReason);
+      setRejectModal(null);
+      setRejectReason('');
+      fetchLeaves();
+    } catch (e) {
+      alert(e.response?.data?.message || e.message);
+    }
   };
 
-  const data = tab === 'pending' ? pendingLeaves : leaves;
-
-  const columns = [
-    {
-      key: 'employee', label: 'Employee',
-      render: (v, r) => (
-        <div>
-          <p className="font-medium text-slate-800">{r.employeeName || `${r.employee?.firstName || ''} ${r.employee?.lastName || ''}`.trim() || '—'}</p>
-          <p className="text-xs text-slate-400">{r.employee?.department || ''}</p>
-        </div>
-      ),
-    },
-    { key: 'leaveType', label: 'Type', render: (v) => <Badge variant="info">{v}</Badge> },
-    { key: 'startDate', label: 'Start Date', render: (v) => v ? new Date(v).toLocaleDateString('en-IN') : '—' },
-    { key: 'endDate', label: 'End Date', render: (v) => v ? new Date(v).toLocaleDateString('en-IN') : '—' },
-    { key: 'leaveDays', label: 'Days', render: (v, r) => v || r.totalDays || '—' },
-    { key: 'reason', label: 'Reason', render: (v) => v ? (v.length > 40 ? v.slice(0, 40) + '...' : v) : '—' },
-    {
-      key: 'status', label: 'Status',
-      render: (v) => <Badge variant={statusBadge(v)}>{v}</Badge>,
-    },
-    {
-      key: 'actions', label: 'Actions',
-      render: (_, r) => r.status === 'PENDING' && (isAdmin || isHR) ? (
-        <div className="flex items-center gap-1">
-          <button onClick={() => handleApprove(r.id)} className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Approve">
-            <Check size={15} />
-          </button>
-          <button onClick={() => { setSelectedLeave(r); setRejectReason(''); setShowReject(true); }} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Reject">
-            <X size={15} />
-          </button>
-        </div>
-      ) : null,
-    },
-  ];
-
   return (
-    <div className="space-y-5">
+    <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-slate-800">Leave Management</h2>
-        <Button onClick={() => setShowApply(true)}><Plus size={16} /> Apply Leave</Button>
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800">Leave Management</h1>
+          <p className="text-slate-500 text-sm mt-0.5">{canManage ? 'Pending leave requests' : 'My leave requests'}</p>
+        </div>
+        {!canManage && (
+          <button onClick={() => setShowModal(true)} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors">
+            <Plus size={16} /> Apply Leave
+          </button>
+        )}
       </div>
 
-      {message && (
-        <div className="px-4 py-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">{message}</div>
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+          <strong>Error:</strong> {error}
+        </div>
       )}
 
-      {/* Tabs */}
-      <div className="flex gap-1 bg-slate-100 p-1 rounded-lg w-fit">
-        {['all', 'pending'].map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${tab === t ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
-          >
-            {t === 'all' ? 'All Leaves' : 'Pending Approval'}
-            {t === 'pending' && pendingLeaves.length > 0 && (
-              <span className="ml-1.5 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5">{pendingLeaves.length}</span>
+      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50">
+              {['Employee', 'Leave Type', 'From', 'To', 'Reason', 'Status', canManage ? 'Actions' : ''].filter(Boolean).map(h => (
+                <th key={h} className="text-left py-3 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              [...Array(4)].map((_, i) => (
+                <tr key={i} className="border-b border-slate-50">
+                  {[...Array(6)].map((_, j) => (
+                    <td key={j} className="py-3 px-4"><div className="h-4 bg-slate-100 rounded animate-pulse" /></td>
+                  ))}
+                </tr>
+              ))
+            ) : leaves.length === 0 ? (
+              <tr><td colSpan={7} className="py-10 text-center text-slate-400">No leave requests found</td></tr>
+            ) : (
+              leaves.map(leave => (
+                <tr key={leave.id} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                  <td className="py-3 px-4">
+                    <div className="font-medium text-slate-800">{leave.employeeName || leave.employeeId}</div>
+                  </td>
+                  <td className="py-3 px-4 text-slate-600">{leave.leaveType}</td>
+                  <td className="py-3 px-4 text-slate-600">{leave.fromDate}</td>
+                  <td className="py-3 px-4 text-slate-600">{leave.toDate}</td>
+                  <td className="py-3 px-4 text-slate-500 max-w-xs truncate">{leave.reason}</td>
+                  <td className="py-3 px-4">
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLES[leave.status] || 'bg-slate-100 text-slate-600'}`}>
+                      {leave.status === 'PENDING' && <Clock size={10} />}
+                      {leave.status === 'APPROVED' && <CheckCircle size={10} />}
+                      {leave.status === 'REJECTED' && <XCircle size={10} />}
+                      {leave.status}
+                    </span>
+                  </td>
+                  {canManage && (
+                    <td className="py-3 px-4">
+                      {leave.status === 'PENDING' && (
+                        <div className="flex gap-2">
+                          <button onClick={() => handleApprove(leave.id)} className="px-3 py-1 bg-green-100 text-green-700 hover:bg-green-200 rounded-lg text-xs font-medium transition-colors">Approve</button>
+                          <button onClick={() => { setRejectModal(leave.id); setRejectReason(''); }} className="px-3 py-1 bg-red-100 text-red-600 hover:bg-red-200 rounded-lg text-xs font-medium transition-colors">Reject</button>
+                        </div>
+                      )}
+                    </td>
+                  )}
+                </tr>
+              ))
             )}
-          </button>
-        ))}
+          </tbody>
+        </table>
       </div>
 
-      <Card>
-        <Table columns={columns} data={data} loading={loading} emptyMessage="No leave records found" />
-      </Card>
-
       {/* Apply Leave Modal */}
-      <Modal isOpen={showApply} onClose={() => setShowApply(false)} title="Apply for Leave">
-        <form onSubmit={handleApply} className="space-y-4">
-          {error && <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>}
-          <Select label="Leave Type" required value={form.leaveType} onChange={(e) => setForm({ ...form, leaveType: e.target.value })}>
-            {LEAVE_TYPES.map((t) => <option key={t}>{t}</option>)}
-          </Select>
-          <div className="grid grid-cols-2 gap-4">
-            <Input label="Start Date" type="date" required value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} />
-            <Input label="End Date" type="date" required value={form.endDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })} />
-          </div>
-          <Textarea label="Reason" required value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} placeholder="Reason for leave..." />
-          <div className="flex justify-end gap-3">
-            <Button variant="secondary" onClick={() => setShowApply(false)}>Cancel</Button>
-            <Button type="submit" loading={saving}>Submit Application</Button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Reject Modal */}
-      <Modal isOpen={showReject} onClose={() => setShowReject(false)} title="Reject Leave" size="sm">
-        <div className="space-y-4">
-          <Textarea label="Rejection Reason" required value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="Provide a reason for rejection..." />
-          <div className="flex justify-end gap-3">
-            <Button variant="secondary" onClick={() => setShowReject(false)}>Cancel</Button>
-            <Button variant="danger" loading={saving} onClick={handleReject}>Reject Leave</Button>
+      {showModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between p-6 border-b border-slate-100">
+              <h2 className="text-lg font-semibold">Apply for Leave</h2>
+              <button onClick={() => setShowModal(false)} className="p-1.5 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
+            </div>
+            <form onSubmit={handleApply} className="p-6 space-y-4">
+              {formError && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{formError}</div>}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Leave Type *</label>
+                <select required value={form.leaveType} onChange={e => setForm(f => ({ ...f, leaveType: e.target.value }))}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                  <option value="">Select type…</option>
+                  {['CASUAL', 'SICK', 'EARNED', 'MATERNITY', 'PATERNITY', 'UNPAID'].map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">From Date *</label>
+                  <input required type="date" value={form.fromDate} onChange={e => setForm(f => ({ ...f, fromDate: e.target.value }))}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">To Date *</label>
+                  <input required type="date" value={form.toDate} onChange={e => setForm(f => ({ ...f, toDate: e.target.value }))}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Reason *</label>
+                <textarea required rows={3} value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none" />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Cancel</button>
+                <button type="submit" disabled={saving} className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium disabled:opacity-60">
+                  {saving ? 'Submitting…' : 'Submit Application'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
-      </Modal>
+      )}
+
+      {/* Reject Modal */}
+      {rejectModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+            <h2 className="text-lg font-semibold text-slate-800">Reject Leave</h2>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Rejection Reason</label>
+              <textarea rows={3} value={rejectReason} onChange={e => setRejectReason(e.target.value)}
+                placeholder="Enter reason for rejection…"
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 resize-none" />
+            </div>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setRejectModal(null)} className="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Cancel</button>
+              <button onClick={handleReject} className="px-4 py-2 text-sm bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium">Reject</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
