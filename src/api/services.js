@@ -21,7 +21,7 @@ export const employeeAPI = {
   register: (data) => api.post('/employee/register', data),
   getById: (id) => api.get(`/employee/${id}`),
   getAll: (params) => api.get('/employee', { params }),
-  search: (q) => api.get('/employee/search', { params: { q } }),
+  search: (q, params = {}) => api.get('/employee/search', { params: { q, page: 0, size: 20, ...params } }),
   filterByDepartment: (dept) => api.get('/employee/filter/department', { params: { dept } }),
   filterByStatus: (status) => api.get('/employee/filter/status', { params: { status } }),
   update: (id, data) => api.put(`/employee/${id}`, data),

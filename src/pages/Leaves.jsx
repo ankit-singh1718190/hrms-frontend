@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { leaveAPI } from '../api/services';
+import { leaveAPI, employeeAPI } from '../api/services';
 import { useAuth } from '../context/useAuth';
 import { Plus, X, CheckCircle, XCircle, Clock } from 'lucide-react';
 
@@ -11,6 +11,20 @@ const STATUS_STYLES = {
   REJECTED: 'bg-red-100 text-red-600',
 };
 
+async function resolveEmployeeDbId(employeeCode) {
+  if (employeeCode == null || String(employeeCode).trim() === '') return null;
+  const n = Number(employeeCode);
+  if (!Number.isNaN(n) && String(n) === String(employeeCode).trim()) return n;
+  try {
+    const res = await employeeAPI.search(String(employeeCode).trim(), { page: 0, size: 1 });
+    const content = unwrap(res)?.content;
+    const first = Array.isArray(content) ? content[0] : null;
+    return first?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export default function Leaves() {
   const { user, isAdmin, isHR, isManager } = useAuth();
   const canManage = isAdmin || isHR || isManager;
@@ -18,6 +32,7 @@ export default function Leaves() {
   const [leaves, setLeaves] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [employeeDbId, setEmployeeDbId] = useState(null);
 
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState({ leaveType: '', fromDate: '', toDate: '', reason: '' });
@@ -35,25 +50,85 @@ export default function Leaves() {
       if (canManage) {
         res = await leaveAPI.getPending({ page: 0, size: 50 });
       } else {
-        res = await leaveAPI.getByEmployee(user.employeeId, { page: 0, size: 50 });
+        // Employee: try getPending first (same endpoint as admin); if allowed, filter to current user's leaves
+        try {
+          res = await leaveAPI.getPending({ page: 0, size: 50 });
+          const data = unwrap(res);
+          const all = Array.isArray(data) ? data : (data?.content ?? []);
+          const myId = user?.employeeId;
+          const myName = user?.name;
+          const mine = (Array.isArray(all) ? all : []).filter(l =>
+            l?.employeeId === myId || l?.employeeName === myName || String(l?.employeeId) === String(myId)
+          );
+          setLeaves(mine);
+          setLoading(false);
+          return;
+        } catch (pendingErr) {
+          if (pendingErr.response?.status !== 403) throw pendingErr;
+        }
+        // Fallback: get by employee id (numeric id from search)
+        let empId = employeeDbId ?? user?.employeeId;
+        if (empId == null) {
+          const resolved = await resolveEmployeeDbId(user?.employeeId);
+          if (resolved != null) {
+            setEmployeeDbId(resolved);
+            empId = resolved;
+          }
+        }
+        try {
+          res = await leaveAPI.getByEmployee(empId, { page: 0, size: 50 });
+        } catch (err) {
+          if (err.response?.status === 403 && typeof empId === 'string') {
+            const resolved = await resolveEmployeeDbId(user?.employeeId);
+            if (resolved != null) {
+              setEmployeeDbId(resolved);
+              res = await leaveAPI.getByEmployee(resolved, { page: 0, size: 50 });
+            } else throw err;
+          } else throw err;
+        }
       }
       const data = unwrap(res);
-      setLeaves(Array.isArray(data) ? data : data?.content ?? []);
+      const list = Array.isArray(data) ? data : (data?.content ?? []);
+      setLeaves(Array.isArray(list) ? list : []);
     } catch (e) {
-      setError(`Failed to load leaves: ${e.message}`);
+      const status = e.response?.status;
+      const msg = status === 403
+        ? 'You don\'t have permission to view leave requests. Contact your admin.'
+        : `Failed to load leaves: ${e.message}`;
+      setError(msg);
+      setLeaves([]);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { fetchLeaves(); }, []);
+  useEffect(() => {
+    if (!canManage && user?.employeeId && employeeDbId == null) {
+      resolveEmployeeDbId(user.employeeId).then((id) => {
+        if (id != null) setEmployeeDbId(id);
+      });
+    }
+  }, [canManage, user?.employeeId]);
+
+  useEffect(() => { fetchLeaves(); }, [employeeDbId]);
 
   const handleApply = async (e) => {
     e.preventDefault();
     setSaving(true);
     setFormError('');
     try {
-      await leaveAPI.apply({ ...form, employeeId: user.employeeId });
+      const dbId = employeeDbId ?? await resolveEmployeeDbId(user?.employeeId);
+      if (dbId == null) {
+        setFormError('Could not resolve employee. Please try again.');
+        return;
+      }
+      await leaveAPI.apply({
+        employeeId: dbId,
+        leaveType: form.leaveType,
+        startDate: form.fromDate,
+        endDate: form.toDate,
+        reason: form.reason,
+      });
       setShowModal(false);
       setForm({ leaveType: '', fromDate: '', toDate: '', reason: '' });
       fetchLeaves();
@@ -131,8 +206,8 @@ export default function Leaves() {
                     <div className="font-medium text-slate-800">{leave.employeeName || leave.employeeId}</div>
                   </td>
                   <td className="py-3 px-4 text-slate-600">{leave.leaveType}</td>
-                  <td className="py-3 px-4 text-slate-600">{leave.fromDate}</td>
-                  <td className="py-3 px-4 text-slate-600">{leave.toDate}</td>
+                  <td className="py-3 px-4 text-slate-600">{leave.startDate ?? leave.fromDate ?? '—'}</td>
+                  <td className="py-3 px-4 text-slate-600">{leave.endDate ?? leave.toDate ?? '—'}</td>
                   <td className="py-3 px-4 text-slate-500 max-w-xs truncate">{leave.reason}</td>
                   <td className="py-3 px-4">
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLES[leave.status] || 'bg-slate-100 text-slate-600'}`}>

@@ -13,7 +13,6 @@ dist-ssr/
 .env.production
 .env.staging
 .env.*
-!.env.example        # keep only the example template
 
 # ── Logs ───────────────────────────────────────────────────────
 logs/

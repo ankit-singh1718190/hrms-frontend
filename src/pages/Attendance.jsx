@@ -41,6 +41,15 @@ function formatDuration(val) {
   return `${hours}h ${minutes}m ${seconds}s`;
 }
 
+function formatElapsedMs(ms) {
+  if (ms == null || ms < 0) return '0h 0m 0s';
+  const totalSeconds = Math.floor(ms / 1000);
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  return `${h}h ${m}m ${s}s`;
+}
+
 export default function Attendance() {
   const { isAdmin, isHR, isManager } = useAuth();
   const isPrivilegedRole = isAdmin || isHR || isManager;
@@ -76,6 +85,7 @@ export default function Attendance() {
   const [checkOutLoading, setCheckOutLoading] = useState(false);
   const [status, setStatus] = useState('idle'); // idle | success | error
   const [message, setMessage] = useState('');
+  const [runningTick, setRunningTick] = useState(0);
 
   const today = new Date().toLocaleDateString('en-US', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
@@ -96,6 +106,13 @@ export default function Attendance() {
         setTodayRecord(record);
         setFallbackCheckedIn(!!record?.checkInTime);
         setFallbackCheckedOut(!!record?.checkOutTime);
+        // Use saved check-in location so "Location" shows where user checked in, not current position
+        const lat = record?.latitude != null ? Number(record.latitude) : null;
+        const lng = record?.longitude != null ? Number(record.longitude) : null;
+        if (lat != null && lng != null) {
+          setLocation({ lat, lng, accuracy: record?.accuracy ?? null });
+          if (record?.address) setAddress(record.address);
+        }
       } else {
         setTodayRecord(null);
         setFallbackCheckedIn(false);
@@ -152,6 +169,14 @@ export default function Attendance() {
     getLocation();
   }, [isPrivilegedRole]);
 
+  // Running timer: update every second when checked in but not checked out
+  const showRunningTimer = todayRecord?.checkInTime && !todayRecord?.checkOutTime;
+  useEffect(() => {
+    if (!showRunningTimer) return;
+    const id = setInterval(() => setRunningTick((c) => c + 1), 1000);
+    return () => clearInterval(id);
+  }, [showRunningTimer]);
+
   const getLocation = () => {
     setLocating(true);
     setGeoError('');
@@ -162,21 +187,41 @@ export default function Attendance() {
     }
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
-        const { latitude, longitude } = pos.coords;
-        setLocation({ lat: latitude, lng: longitude });
+        const { latitude, longitude, accuracy } = pos.coords;
+        setLocation({ lat: latitude, lng: longitude, accuracy: accuracy ?? null });
         try {
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`
-          );
+          const url = `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&addressdetails=1`;
+          const res = await fetch(url, {
+            headers: {
+              'Accept': 'application/json',
+              'Accept-Language': 'en',
+              'User-Agent': 'HRMS-Attendance/1.0 (https://github.com/hrms-frontend)',
+            },
+          });
           const data = await res.json();
-          setAddress(data.display_name || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
+          const addr = data.address;
+          const name = data.display_name;
+          if (addr && typeof addr === 'object') {
+            const parts = [
+              addr.road,
+              addr.neighbourhood || addr.suburb || addr.village,
+              addr.city_district || addr.city || addr.town || addr.county,
+              addr.state,
+              addr.postcode,
+              addr.country,
+            ].filter(Boolean);
+            const unique = [...new Set(parts)];
+            setAddress(unique.join(', ') || name || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
+          } else {
+            setAddress(name || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
+          }
         } catch {
           setAddress(`${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
         }
         setLocating(false);
       },
       (err) => { setGeoError(`Location error: ${err.message}`); setLocating(false); },
-      { enableHighAccuracy: true, timeout: 10000 }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
   };
 
@@ -404,17 +449,28 @@ export default function Attendance() {
             </div>
 
             {/* Working hours */}
-            <div className={`rounded-xl p-4 text-center ${todayRecord?.workingHours ? 'bg-indigo-50 border border-indigo-100' : 'bg-slate-50 border border-slate-100'}`}>
-              <div className="flex items-center justify-center gap-1.5 mb-2">
-                <Timer size={14} className={todayRecord?.workingHours ? 'text-indigo-500' : 'text-slate-400'} />
-                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Hours</span>
-              </div>
-              <p className={`text-base font-bold ${todayRecord?.workingHours ? 'text-indigo-700' : 'text-slate-400'}`}>
-                {todayRecord?.workingHours
-                  ? formatDuration(todayRecord.workingHours)
-                  : (alreadyCheckedIn ? 'In progress' : '—')}
-              </p>
-            </div>
+            {(() => {
+              const hasWorkHours = !!todayRecord?.workingHours;
+              const running = alreadyCheckedIn && !alreadyCheckedOut && todayRecord?.checkInTime;
+              const elapsedMs = running ? Date.now() - new Date(todayRecord.checkInTime).getTime() : 0;
+              const displayHours = hasWorkHours
+                ? formatDuration(todayRecord.workingHours)
+                : running
+                  ? formatElapsedMs(elapsedMs)
+                  : (alreadyCheckedIn ? 'In progress' : '—');
+              const isHighlight = hasWorkHours || running;
+              return (
+                <div className={`rounded-xl p-4 text-center ${isHighlight ? 'bg-indigo-50 border border-indigo-100' : 'bg-slate-50 border border-slate-100'}`}>
+                  <div className="flex items-center justify-center gap-1.5 mb-2">
+                    <Timer size={14} className={isHighlight ? 'text-indigo-500' : 'text-slate-400'} />
+                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Hours</span>
+                  </div>
+                  <p className={`text-base font-bold ${isHighlight ? 'text-indigo-700' : 'text-slate-400'}`}>
+                    {displayHours}
+                  </p>
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -473,6 +529,9 @@ export default function Attendance() {
             ? <div className="space-y-1">
                 <p className="text-sm text-slate-600 leading-relaxed">{address || 'Fetching address…'}</p>
                 <p className="text-xs text-slate-400 font-mono">{location.lat.toFixed(6)}, {location.lng.toFixed(6)}</p>
+                {location.accuracy != null && (
+                  <p className="text-xs text-slate-400">Accuracy: ±{Math.round(location.accuracy)} m</p>
+                )}
               </div>
             : <p className="text-sm text-slate-400">{locating ? 'Getting your location…' : 'Location not available'}</p>
         }
