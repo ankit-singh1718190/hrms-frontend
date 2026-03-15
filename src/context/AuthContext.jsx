@@ -16,8 +16,8 @@ export function AuthProvider({ children }) {
     setError(null);
     try {
       const res = await authAPI.login({ emailId: email, password });
-      const { accessToken, fullName, emailId, role, employeeId } = res.data.data;
-      const userData = { name: fullName, email: emailId, role, employeeId };
+      const { accessToken, fullName, emailId, role, employeeId, id } = res.data.data;
+      const userData = { name: fullName, email: emailId, role, employeeId, id };
       localStorage.setItem('token', accessToken);
       localStorage.setItem('user', JSON.stringify(userData));
       setToken(accessToken);

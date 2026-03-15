@@ -6,7 +6,7 @@ const unwrap = (res) => res?.data?.data;
 
 const EMPTY = {
   firstName: '', lastName: '', emailId: '', password: '',
-  contactNumber1: '', department: '', role: 'ADMIN',
+  phone: '', department: '', role: 'ADMIN',
 };
 
 export default function Admins() {
@@ -15,7 +15,6 @@ export default function Admins() {
   const [error, setError] = useState('');
 
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
 
@@ -37,12 +36,22 @@ export default function Admins() {
 
   const handleCreate = async (e) => {
     e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const payload = {
+      firstName: (fd.get('firstName') || '').toString().trim(),
+      lastName: (fd.get('lastName') || '').toString().trim(),
+      emailId: (fd.get('emailId') || '').toString().trim(),
+      password: (fd.get('password') || '').toString(),
+      phone: (fd.get('phone') || '').toString().trim(),
+      department: (fd.get('department') || '').toString().trim(),
+      role: (fd.get('role') || 'ADMIN').toString(),
+    };
+
     setSaving(true);
     setFormError('');
     try {
-      await adminAPI.register(form);
+      await adminAPI.register(payload);
       setShowModal(false);
-      setForm(EMPTY);
       fetchAdmins();
     } catch (e) {
       setFormError(e.response?.data?.message || e.message);
@@ -74,13 +83,20 @@ export default function Admins() {
     <div>
       <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
       {options ? (
-        <select value={form[name] ?? ''} onChange={e => setForm(f => ({ ...f, [name]: e.target.value }))}
-          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
-          {options.map(o => <option key={o} value={o}>{o}</option>)}
+        <select
+          name={name}
+          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+        >
+          {options.map(o => (
+            <option key={o} value={o}>{o}</option>
+          ))}
         </select>
       ) : (
-        <input type={type} value={form[name] ?? ''} onChange={e => setForm(f => ({ ...f, [name]: e.target.value }))}
-          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+        <input
+          type={type}
+          name={name}
+          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+        />
       )}
     </div>
   );
@@ -92,7 +108,7 @@ export default function Admins() {
           <h1 className="text-2xl font-bold text-slate-800">Admin Users</h1>
           <p className="text-slate-500 text-sm mt-0.5">{admins.length} administrators</p>
         </div>
-        <button onClick={() => { setForm(EMPTY); setFormError(''); setShowModal(true); }}
+        <button onClick={() => { setFormError(''); setShowModal(true); }}
           className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors">
           <Plus size={16} /> Add Admin
         </button>
@@ -155,28 +171,70 @@ export default function Admins() {
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-            <div className="flex items-center justify-between p-6 border-b border-slate-100">
-              <h2 className="text-lg font-semibold">Add Admin User</h2>
-              <button onClick={() => setShowModal(false)} className="p-1.5 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden">
+            <div className="flex items-start justify-between px-6 py-5 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Add Admin User</h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Create a new administrator account with the appropriate role and contact details.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowModal(false)}
+                className="p-1.5 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+              >
+                <X size={18} />
+              </button>
             </div>
-            <form onSubmit={handleCreate} className="p-6 space-y-3">
-              {formError && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">{formError}</div>}
-              <div className="grid grid-cols-2 gap-3">
+
+            <form onSubmit={handleCreate} className="px-6 py-5 space-y-4">
+              {formError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
+                  {formError}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Field label="First Name *" name="firstName" />
                 <Field label="Last Name *" name="lastName" />
               </div>
-              <Field label="Email *" name="emailId" type="email" />
-              <Field label="Password *" name="password" type="password" />
-              <Field label="Contact Number" name="contactNumber1" />
-              <Field label="Department" name="department" />
-              <Field label="Role" name="role" options={['ADMIN', 'HR', 'MANAGER']} />
-              <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 text-sm border border-slate-200 rounded-lg hover:bg-slate-50">Cancel</button>
-                <button type="submit" disabled={saving} className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium disabled:opacity-60">
-                  {saving ? 'Creating…' : 'Create Admin'}
-                </button>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Field label="Email *" name="emailId" type="email" />
+                <Field label="Password *" name="password" type="password" />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Field label="Contact Number" name="phone" />
+                <Field label="Department" name="department" />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Field label="Role" name="role" options={['ADMIN', 'HR', 'MANAGER']} />
+              </div>
+
+              <div className="flex items-center justify-between pt-3 border-t border-slate-100 mt-2">
+                <p className="text-xs text-slate-400">
+                  Strong password recommended: at least 8 characters with letters and numbers.
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowModal(false)}
+                    className="px-4 py-2 text-sm border border-slate-200 rounded-lg text-slate-700 hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium disabled:opacity-60"
+                  >
+                    {saving ? 'Creating…' : 'Create Admin'}
+                  </button>
+                </div>
               </div>
             </form>
           </div>

@@ -10,6 +10,10 @@ import Leaves from './pages/Leaves';
 import Payroll from './pages/Payroll';
 import Admins from './pages/Admins';
 import Emails from './pages/Emails';
+import Calendar from './pages/Calendar';
+import Reports from './pages/Reports';
+import MyDocuments from './pages/MyDocuments';
+import Form16Admin from './pages/Form16Admin';
 
 function ProtectedRoute({ children, roles }) {
   const { user } = useAuth();
@@ -31,6 +35,10 @@ function AppRoutes() {
         <Route path="/payroll" element={<ProtectedRoute roles={['ADMIN', 'SUPER_ADMIN', 'HR']}><Payroll /></ProtectedRoute>} />
         <Route path="/admins" element={<ProtectedRoute roles={['ADMIN', 'SUPER_ADMIN']}><Admins /></ProtectedRoute>} />
         <Route path="/emails" element={<ProtectedRoute roles={['ADMIN', 'SUPER_ADMIN', 'HR']}><Emails /></ProtectedRoute>} />
+        <Route path="/calendar" element={<Calendar />} />
+        <Route path="/reports" element={<ProtectedRoute roles={['ADMIN', 'SUPER_ADMIN', 'HR']}><Reports /></ProtectedRoute>} />
+        <Route path="/form16-admin" element={<ProtectedRoute roles={['ADMIN', 'SUPER_ADMIN', 'HR']}><Form16Admin /></ProtectedRoute>} />
+        <Route path="/my-documents" element={<ProtectedRoute roles={['EMPLOYEE']}><MyDocuments /></ProtectedRoute>} />
       </Route>
       <Route path="*" element={<Navigate to={user ? '/dashboard' : '/login'} replace />} />
     </Routes>

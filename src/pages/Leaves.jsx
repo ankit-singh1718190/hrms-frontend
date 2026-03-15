@@ -50,41 +50,24 @@ export default function Leaves() {
       if (canManage) {
         res = await leaveAPI.getPending({ page: 0, size: 50 });
       } else {
-        // Employee: try getPending first (same endpoint as admin); if allowed, filter to current user's leaves
-        try {
-          res = await leaveAPI.getPending({ page: 0, size: 50 });
-          const data = unwrap(res);
-          const all = Array.isArray(data) ? data : (data?.content ?? []);
-          const myId = user?.employeeId;
-          const myName = user?.name;
-          const mine = (Array.isArray(all) ? all : []).filter(l =>
-            l?.employeeId === myId || l?.employeeName === myName || String(l?.employeeId) === String(myId)
-          );
-          setLeaves(mine);
-          setLoading(false);
-          return;
-        } catch (pendingErr) {
-          if (pendingErr.response?.status !== 403) throw pendingErr;
-        }
-        // Fallback: get by employee id (numeric id from search)
-        let empId = employeeDbId ?? user?.employeeId;
-        if (empId == null) {
+        // Employee: load only own leaves via getByEmployee (do not call getPending — returns Access Denied / 400 for employees)
+        let numericId = employeeDbId ?? user?.id;
+        if (numericId == null) {
           const resolved = await resolveEmployeeDbId(user?.employeeId);
           if (resolved != null) {
             setEmployeeDbId(resolved);
-            empId = resolved;
+            numericId = resolved;
           }
         }
-        try {
-          res = await leaveAPI.getByEmployee(empId, { page: 0, size: 50 });
-        } catch (err) {
-          if (err.response?.status === 403 && typeof empId === 'string') {
-            const resolved = await resolveEmployeeDbId(user?.employeeId);
-            if (resolved != null) {
-              setEmployeeDbId(resolved);
-              res = await leaveAPI.getByEmployee(resolved, { page: 0, size: 50 });
-            } else throw err;
-          } else throw err;
+        // Backend expects integer path; avoid sending float/NaN (causes 400)
+        const numId = numericId != null && numericId !== '' ? parseInt(String(numericId), 10) : NaN;
+        if (!Number.isNaN(numId) && numId > 0) {
+          res = await leaveAPI.getByEmployee(numId, { page: 0, size: 50 });
+        } else {
+          setLeaves([]);
+          setError(user?.id == null && user?.employeeId ? 'Please log out and log in again to view your leaves.' : '');
+          setLoading(false);
+          return;
         }
       }
       const data = unwrap(res);
@@ -102,24 +85,36 @@ export default function Leaves() {
     }
   };
 
+  // Use numeric id from login when available (avoids 403 on employee search)
   useEffect(() => {
-    if (!canManage && user?.employeeId && employeeDbId == null) {
+    if (!canManage && user?.id != null) {
+      setEmployeeDbId(user.id);
+    } else if (!canManage && user?.employeeId && employeeDbId == null) {
       resolveEmployeeDbId(user.employeeId).then((id) => {
         if (id != null) setEmployeeDbId(id);
       });
     }
-  }, [canManage, user?.employeeId]);
+  }, [canManage, user?.employeeId, user?.id]);
 
-  useEffect(() => { fetchLeaves(); }, [employeeDbId]);
+  // Fetch when we have employeeDbId (or for employees, when user.id is available so we use it inside fetchLeaves)
+  useEffect(() => {
+    fetchLeaves();
+  }, [employeeDbId, (!canManage ? user?.id : null)]);
 
   const handleApply = async (e) => {
     e.preventDefault();
     setSaving(true);
     setFormError('');
+    if (form.fromDate && form.toDate && new Date(form.toDate) < new Date(form.fromDate)) {
+      setFormError('To Date must be on or after From Date.');
+      setSaving(false);
+      return;
+    }
     try {
-      const dbId = employeeDbId ?? await resolveEmployeeDbId(user?.employeeId);
+      const dbId = employeeDbId ?? user?.id ?? await resolveEmployeeDbId(user?.employeeId);
       if (dbId == null) {
         setFormError('Could not resolve employee. Please try again.');
+        setSaving(false);
         return;
       }
       await leaveAPI.apply({

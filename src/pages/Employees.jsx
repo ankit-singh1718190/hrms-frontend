@@ -30,6 +30,8 @@ function Field({ label, name, type = 'text', options, form, setForm }) {
 }
 
 const EMPTY = {
+  employeeId: '',
+  employeeType: 'FULL_TIME',
   prefix: '', firstName: '', lastName: '', emailId: '', password: '',
   contactNumber1: '', dateOfBirth: '', gender: '', department: '', designation: '',
   joiningDate: '', basicEmployeeSalary: '', role: 'EMPLOYEE', employmentStatus: 'ACTIVE',
@@ -104,12 +106,16 @@ export default function Employees() {
   useEffect(() => { fetchEmployees(page); }, [page]);
 
   const openCreate = () => { setForm(EMPTY); setFormError(''); setModalMode('create'); setShowModal(true); };
-  const openEdit = (emp) => { setForm({ ...EMPTY, ...emp, password: '' }); setFormError(''); setModalMode('edit'); setSelected(emp); setShowModal(true); };
+  const openEdit = (emp) => { setForm({ ...EMPTY, ...emp, password: '', workEmail: emp.workEmail || emp.emailId || '' }); setFormError(''); setModalMode('edit'); setSelected(emp); setShowModal(true); };
   const openView = (emp) => { setSelected(emp); setModalMode('view'); setShowModal(true); };
 
   // Sanitize form: convert empty strings for numeric/date fields to proper types
   const buildPayload = (rawForm) => {
     const f = { ...rawForm };
+    // Single email field: send workEmail as both workEmail and emailId (backend requires emailId)
+    if (f.workEmail != null && String(f.workEmail).trim() !== '') {
+      f.emailId = String(f.workEmail).trim();
+    }
     // Convert salary to number or omit if empty
     if (f.basicEmployeeSalary === '' || f.basicEmployeeSalary === null || f.basicEmployeeSalary === undefined) {
       delete f.basicEmployeeSalary;
@@ -125,6 +131,9 @@ export default function Employees() {
 
   // Parse backend error into a friendly message
   const parseError = (e) => {
+    if (e.response?.status === 403) {
+      return 'You don\'t have permission to add or edit employees. Please log in as ADMIN or HR.';
+    }
     const data = e.response?.data;
     if (!data) return e.message || 'Something went wrong. Please try again.';
 
@@ -165,7 +174,7 @@ export default function Employees() {
     // Frontend validation
     if (!form.firstName?.trim()) { setFormError('First Name is required.'); setSaving(false); return; }
     if (!form.lastName?.trim())  { setFormError('Last Name is required.'); setSaving(false); return; }
-    if (!form.emailId?.trim())   { setFormError('Email is required.'); setSaving(false); return; }
+    if (!form.workEmail?.trim()) { setFormError('Work Email is required.'); setSaving(false); return; }
     if (!form.department?.trim()) { setFormError('Department is required.'); setSaving(false); return; }
     if (!form.designation?.trim()) { setFormError('Designation is required.'); setSaving(false); return; }
     if (modalMode === 'create' && !form.password?.trim()) { setFormError('Password is required.'); setSaving(false); return; }
@@ -374,8 +383,6 @@ export default function Employees() {
                     <Field label="Prefix" name="prefix" options={['Mr', 'Ms', 'Mrs', 'Dr']} form={form} setForm={setForm} />
                     <Field label="First Name *" name="firstName" form={form} setForm={setForm} />
                     <Field label="Last Name *" name="lastName" form={form} setForm={setForm} />
-                    <Field label="Email *" name="emailId" type="email" form={form} setForm={setForm} />
-                    {modalMode === 'create' && <Field label="Password *" name="password" type="password" form={form} setForm={setForm} />}
                     <Field label="Contact Number *" name="contactNumber1" form={form} setForm={setForm} />
                     <Field label="Date of Birth" name="dateOfBirth" type="date" form={form} setForm={setForm} />
                     <Field label="Gender" name="gender" options={['Male', 'Female', 'Other']} form={form} setForm={setForm} />
@@ -386,13 +393,15 @@ export default function Employees() {
                 <div>
                   <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Employment</p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <Field label="Employee ID *" name="employeeId" form={form} setForm={setForm} />
+                    <Field label="Employee Type *" name="employeeType" options={['FULL_TIME', 'CONTRACT', 'TEMPORARY', 'INTERN']} form={form} setForm={setForm} />
                     <Field label="Department *" name="department" form={form} setForm={setForm} />
                     <Field label="Designation *" name="designation" form={form} setForm={setForm} />
                     <Field label="Role" name="role" options={['EMPLOYEE', 'MANAGER', 'HR', 'ADMIN']} form={form} setForm={setForm} />
                     <Field label="Status" name="employmentStatus" options={['ACTIVE', 'INACTIVE', 'RESIGNED', 'TERMINATED']} form={form} setForm={setForm} />
                     <Field label="Joining Date" name="joiningDate" type="date" form={form} setForm={setForm} />
-                    <Field label="Basic Salary" name="basicEmployeeSalary" type="number" form={form} setForm={setForm} />
-                    <Field label="Work Email" name="workEmail" type="email" form={form} setForm={setForm} />
+                    <Field label="Work Email *" name="workEmail" type="email" form={form} setForm={setForm} />
+                    {modalMode === 'create' && <Field label="Password *" name="password" type="password" form={form} setForm={setForm} />}
                   </div>
                 </div>
 

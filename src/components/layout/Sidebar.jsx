@@ -1,7 +1,8 @@
 import { NavLink } from 'react-router-dom';
 import {
-  LayoutDashboard, Users, Clock, CalendarDays, DollarSign,
+  LayoutDashboard, Users, Clock, CalendarDays, Calendar, DollarSign,
   ShieldCheck, Mail, LogOut, Building2, ChevronLeft, ChevronRight,
+  BarChart3, FileText,
 } from 'lucide-react';
 import { useAuth } from '../../context/useAuth';
 import { useState } from 'react';
@@ -11,9 +12,13 @@ const navItems = [
   { to: '/employees', icon: Users, label: 'Employees', roles: ['ADMIN', 'SUPER_ADMIN', 'HR', 'MANAGER'] },
   { to: '/attendance', icon: Clock, label: 'Attendance', roles: ['ADMIN', 'SUPER_ADMIN', 'HR', 'MANAGER', 'EMPLOYEE'] },
   { to: '/leaves', icon: CalendarDays, label: 'Leave Management', roles: ['ADMIN', 'SUPER_ADMIN', 'HR', 'MANAGER', 'EMPLOYEE'] },
+  { to: '/calendar', icon: Calendar, label: 'Calendar', roles: ['ADMIN', 'SUPER_ADMIN', 'HR', 'MANAGER', 'EMPLOYEE'] },
   { to: '/payroll', icon: DollarSign, label: 'Payroll', roles: ['ADMIN', 'SUPER_ADMIN', 'HR'] },
   { to: '/admins', icon: ShieldCheck, label: 'Admin Users', roles: ['ADMIN', 'SUPER_ADMIN'] },
   { to: '/emails', icon: Mail, label: 'Email Logs', roles: ['ADMIN', 'SUPER_ADMIN', 'HR'] },
+  { to: '/reports', icon: BarChart3, label: 'Reports', roles: ['ADMIN', 'SUPER_ADMIN', 'HR'] },
+  { to: '/form16-admin', icon: FileText, label: 'Form 16 Upload', roles: ['ADMIN', 'SUPER_ADMIN', 'HR'] },
+  { to: '/my-documents', icon: FileText, label: 'My Documents', roles: ['EMPLOYEE'] },
 ];
 
 export default function Sidebar() {
