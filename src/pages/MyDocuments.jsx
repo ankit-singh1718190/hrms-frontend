@@ -206,6 +206,7 @@ export default function MyDocuments() {
                     <th className="px-4 py-2 text-left font-semibold">Status</th>
                     <th className="px-4 py-2 text-left font-semibold">Payment Date</th>
                     <th className="px-4 py-2 text-left font-semibold">Reference</th>
+                    <th className="px-4 py-2 text-right font-semibold">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -221,6 +222,20 @@ export default function MyDocuments() {
                       <td className="px-4 py-2 text-slate-700">{p.status}</td>
                       <td className="px-4 py-2 text-slate-700">{p.paymentDate}</td>
                       <td className="px-4 py-2 text-slate-700">{p.paymentRef}</td>
+                      <td className="px-4 py-2 text-right">
+                        {p.payslipUrl ? (
+                          <a
+                            href={p.payslipUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-700"
+                          >
+                            Download
+                          </a>
+                        ) : (
+                          <span className="text-xs text-slate-400">No file</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

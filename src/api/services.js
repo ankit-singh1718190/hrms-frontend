@@ -98,6 +98,7 @@ export const payrollAPI = {
   generate: (month) => api.post('/payroll/generate', null, { params: { month } }),
   approve: (id) => api.put(`/payroll/${id}/approve`),
   processPayment: (id) => api.post(`/payroll/${id}/process-payment`),
+  save: (payload) => api.post('/payroll/save', payload),
   getByMonth: (month, params) => api.get('/payroll/month', { params: { month, ...params } }),
   getByEmployee: (employeeId) => api.get(`/payroll/employee/${employeeId}`),
   getMyPayslips: () => api.get('/payroll/my-payslips'),
