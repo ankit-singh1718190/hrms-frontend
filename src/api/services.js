@@ -51,10 +51,7 @@ export const employeeAPI = {
   getDashboard: () => api.get('/employee/dashboard'),
   getMyForm16List: () => api.get('/employee/form16/my-list'),
   downloadMyForm16: (fy) =>
-    api.get('/employee/form16/download', {
-      params: { fy },
-      responseType: 'blob',
-    }),
+    api.get('/employee/form16/download', { params: { fy }, responseType: 'blob' }),
 };
 
 // Attendance
@@ -67,20 +64,19 @@ export const attendanceAPI = {
   reportDaily: (params) => api.get('/attendance/report/daily', { params }),
   reportMonthly: (params) => api.get('/attendance/report/monthly', { params }),
   exportDaily: (date) =>
-    api.get('/attendance/export/daily', {
-      params: date ? { date } : {},
-      responseType: 'blob',
-    }),
+    api.get('/attendance/export/daily', { params: date ? { date } : {}, responseType: 'blob' }),
   exportMonthly: (month) =>
-    api.get('/attendance/export/monthly', {
-      params: { month },
-      responseType: 'blob',
-    }),
+    api.get('/attendance/export/monthly', { params: { month }, responseType: 'blob' }),
   exportYearly: (year) =>
-    api.get('/attendance/export/yearly', {
-      params: { year },
-      responseType: 'blob',
-    }),
+    api.get('/attendance/export/yearly', { params: { year }, responseType: 'blob' }),
+
+  // ── NEW: Edit attendance with audit trail ─────────────────────────────────
+  editAttendance: (attendanceId, data) =>
+    api.put(`/attendance/${attendanceId}/edit`, data),
+
+  // ── NEW: Get all edit history (Admin/HR only) ─────────────────────────────
+  getEditHistory: (from, to) =>
+    api.get('/attendance/edit-history', { params: { from, to } }),
 };
 
 // Leave

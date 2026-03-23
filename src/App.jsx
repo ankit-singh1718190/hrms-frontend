@@ -3,9 +3,13 @@ import { AuthProvider } from './context/AuthContext';
 import { useAuth } from './context/useAuth';
 import Layout from './components/layout/Layout';
 import Login from './pages/Login';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
+import UpdatePassword from './pages/UpdatePassword';
 import Dashboard from './pages/Dashboard';
 import Employees from './pages/Employees';
 import Attendance from './pages/Attendance';
+import AttendanceEditHistory from './pages/AttendanceEditHistory';
 import Leaves from './pages/Leaves';
 import Payroll from './pages/Payroll';
 import Admins from './pages/Admins';
@@ -26,20 +30,33 @@ function AppRoutes() {
   const { user } = useAuth();
   return (
     <Routes>
-      <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <Login />} />
+      <Route path="/login"           element={user ? <Navigate to="/dashboard" replace /> : <Login />} />
+      <Route path="/forgot-password" element={user ? <Navigate to="/dashboard" replace /> : <ForgotPassword />} />
+      <Route path="/reset-password"  element={user ? <Navigate to="/dashboard" replace /> : <ResetPassword />} />
+
       <Route element={<Layout />}>
-        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/dashboard"       element={<Dashboard />} />
+        <Route path="/update-password" element={<ProtectedRoute><UpdatePassword /></ProtectedRoute>} />
+        <Route path="/attendance"      element={<Attendance />} />
+
+        {/* Attendance Edit History — Admin & HR only */}
+        <Route path="/attendance/edit-history" element={
+          <ProtectedRoute roles={['ADMIN', 'SUPER_ADMIN', 'HR']}>
+            <AttendanceEditHistory />
+          </ProtectedRoute>
+        } />
+
         <Route path="/employees" element={<ProtectedRoute roles={['ADMIN', 'SUPER_ADMIN', 'HR', 'MANAGER']}><Employees /></ProtectedRoute>} />
-        <Route path="/attendance" element={<Attendance />} />
-        <Route path="/leaves" element={<Leaves />} />
-        <Route path="/payroll" element={<ProtectedRoute roles={['ADMIN', 'SUPER_ADMIN', 'HR']}><Payroll /></ProtectedRoute>} />
-        <Route path="/admins" element={<ProtectedRoute roles={['ADMIN', 'SUPER_ADMIN']}><Admins /></ProtectedRoute>} />
-        <Route path="/emails" element={<ProtectedRoute roles={['ADMIN', 'SUPER_ADMIN', 'HR']}><Emails /></ProtectedRoute>} />
-        <Route path="/calendar" element={<Calendar />} />
-        <Route path="/reports" element={<ProtectedRoute roles={['ADMIN', 'SUPER_ADMIN', 'HR']}><Reports /></ProtectedRoute>} />
-        <Route path="/form16-admin" element={<ProtectedRoute roles={['ADMIN', 'SUPER_ADMIN', 'HR']}><Form16Admin /></ProtectedRoute>} />
-        <Route path="/my-documents" element={<ProtectedRoute roles={['EMPLOYEE']}><MyDocuments /></ProtectedRoute>} />
+        <Route path="/leaves"    element={<Leaves />} />
+        <Route path="/payroll"   element={<ProtectedRoute roles={['ADMIN', 'SUPER_ADMIN', 'HR']}><Payroll /></ProtectedRoute>} />
+        <Route path="/admins"    element={<ProtectedRoute roles={['ADMIN', 'SUPER_ADMIN']}><Admins /></ProtectedRoute>} />
+        <Route path="/emails"    element={<ProtectedRoute roles={['ADMIN', 'SUPER_ADMIN', 'HR']}><Emails /></ProtectedRoute>} />
+        <Route path="/calendar"      element={<Calendar />} />
+        <Route path="/reports"       element={<ProtectedRoute roles={['ADMIN', 'SUPER_ADMIN', 'HR']}><Reports /></ProtectedRoute>} />
+        <Route path="/form16-admin"  element={<ProtectedRoute roles={['ADMIN', 'SUPER_ADMIN', 'HR']}><Form16Admin /></ProtectedRoute>} />
+        <Route path="/my-documents"  element={<ProtectedRoute roles={['EMPLOYEE']}><MyDocuments /></ProtectedRoute>} />
       </Route>
+
       <Route path="*" element={<Navigate to={user ? '/dashboard' : '/login'} replace />} />
     </Routes>
   );
