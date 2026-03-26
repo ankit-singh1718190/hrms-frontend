@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { attendanceAPI, leaveAPI, payrollAPI } from '../api/services';
 import {
   FileSpreadsheet, Calendar, CalendarRange, CalendarClock, DollarSign,
@@ -64,6 +64,7 @@ function SimpleTable({ rows, emptyMessage = 'No records for the selected period.
 }
 
 function ReportCard({
+  id,
   icon: Icon,
   title,
   description,
@@ -73,7 +74,7 @@ function ReportCard({
   emptyMessage,
 }) {
   return (
-    <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+    <section id={id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden scroll-mt-6">
       <div className="px-6 py-5 border-b border-slate-100 bg-gradient-to-r from-slate-50/80 to-white">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-center gap-4">
@@ -103,12 +104,16 @@ function ReportCard({
   );
 }
 
-function Btn({ onClick, disabled, primary, children, icon: Icon }) {
+function Btn({ onClick, disabled, primary, download, children, icon: Icon }) {
   const base =
-    'inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed';
-  const styles = primary
-    ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm'
-    : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300';
+    'inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed';
+  let styles = 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 focus:ring-indigo-500';
+  if (primary) {
+    styles = 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm focus:ring-indigo-500';
+  }
+  if (download) {
+    styles = 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm focus:ring-emerald-500';
+  }
   return (
     <button type="button" onClick={onClick} disabled={disabled} className={`${base} ${styles}`}>
       {Icon && <Icon className="w-4 h-4 shrink-0" />}
@@ -117,23 +122,42 @@ function Btn({ onClick, disabled, primary, children, icon: Icon }) {
   );
 }
 
-export default function Reports() {
+export default function Reports({ section }) {
   const [error, setError] = useState('');
 
   const [dailyDate, setDailyDate] = useState(todayStr);
   const [dailyRows, setDailyRows] = useState([]);
   const [dailyLoading, setDailyLoading] = useState(false);
 
-  const [month, setMonth] = useState(thisMonthDate);
+  const [month, setMonth] = useState(thisMonthDate());
   const [monthlyRows, setMonthlyRows] = useState([]);
   const [monthlyLoading, setMonthlyLoading] = useState(false);
 
   const [leaveRows, setLeaveRows] = useState([]);
   const [leaveLoading, setLeaveLoading] = useState(false);
 
-  const [payrollMonth, setPayrollMonth] = useState(thisMonthDate);
+  const [payrollMonth, setPayrollMonth] = useState(thisMonthDate());
   const [payrollRows, setPayrollRows] = useState([]);
   const [payrollLoading, setPayrollLoading] = useState(false);
+  const [searchName, setSearchName] = useState('');
+  const [searchId, setSearchId] = useState('');
+  const [department, setDepartment] = useState('');
+  const [employeeType, setEmployeeType] = useState('');
+  const [leaveName, setLeaveName] = useState('');
+  const [leaveId, setLeaveId] = useState('');
+  const [leaveDept, setLeaveDept] = useState('');
+  const [leaveType, setLeaveType] = useState('');
+  const [payName, setPayName] = useState('');
+  const [payId, setPayId] = useState('');
+  const [payDept, setPayDept] = useState('');
+  const [payType, setPayType] = useState('');
+
+  // Auto-scroll to the section when navigating from sidebar
+  useEffect(() => {
+    if (!section) return;
+    const el = document.getElementById(`report-${section}`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [section]);
 
   const downloadBlob = (blob, filename) => {
     const url = window.URL.createObjectURL(blob);
@@ -166,20 +190,83 @@ export default function Reports() {
     downloadBlob(blob, filename);
   };
 
-  const handleDaily = async () => {
-    setError('');
-    setDailyLoading(true);
-    try {
-      const res = await attendanceAPI.reportDaily(dailyDate ? { date: dailyDate } : {});
-      const data = res?.data?.data ?? [];
-      setDailyRows(Array.isArray(data) ? data : []);
-    } catch (e) {
-      setError(e.response?.data?.message || e.message || 'Failed to load daily report');
-      setDailyRows([]);
-    } finally {
-      setDailyLoading(false);
-    }
-  };
+  useEffect(() => {
+    if (section !== 'daily') return;
+
+    const fetchData = async () => {
+      setDailyLoading(true);
+      try {
+        const res = await attendanceAPI.reportDaily({
+          date: dailyDate,
+          name: searchName,
+          employeeId: searchId,
+          department,
+          employeeType,
+        });
+
+        const data = res?.data?.data ?? [];
+        setDailyRows(Array.isArray(data) ? data : []);
+      } catch (e) {
+        setDailyRows([]);
+      } finally {
+        setDailyLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [dailyDate, searchName, searchId, department, employeeType, section]);
+
+  useEffect(() => {
+    if (section !== 'leave') return;
+
+    const fetchLeave = async () => {
+      setLeaveLoading(true);
+      try {
+        const res = await leaveAPI.getReportBalance({
+          name: leaveName,
+          employeeId: leaveId,
+          department: leaveDept,
+          employeeType: leaveType,
+        });
+
+        const data = res?.data?.data ?? [];
+        setLeaveRows(Array.isArray(data) ? data : []);
+      } catch (e) {
+        setLeaveRows([]);
+      } finally {
+        setLeaveLoading(false);
+      }
+    };
+
+    fetchLeave();
+  }, [leaveName, leaveId, leaveDept, leaveType, section]);
+  useEffect(() => {
+    if (section !== 'payroll') return;
+
+    const fetchPayroll = async () => {
+      setPayrollLoading(true);
+      try {
+        const params = {
+          month: payrollMonth,
+        };
+
+        if (payName) params.name = payName;
+        if (payId) params.employeeId = payId;
+        if (payDept) params.department = payDept;
+        if (payType) params.employeeType = payType;
+
+        const res = await payrollAPI.getReport(params);
+
+        const data = res?.data?.data ?? [];
+        setPayrollRows(Array.isArray(data) ? data : []);
+      } catch (e) {
+        setPayrollRows([]);
+      } finally {
+        setPayrollLoading(false);
+      }
+    };
+    fetchPayroll();
+  }, [payrollMonth, payName, payId, payDept, payType, section]);
 
   const handleMonthly = async () => {
     if (!month) return;
@@ -249,7 +336,7 @@ export default function Reports() {
     setError('');
     setPayrollLoading(true);
     try {
-      const res = await payrollAPI.getReport(payrollMonth);
+      const res = await payrollAPI.getReport({month: payrollMonth,});
       const data = res?.data?.data ?? [];
       setPayrollRows(Array.isArray(data) ? data : []);
     } catch (e) {
@@ -282,107 +369,219 @@ export default function Reports() {
       )}
 
       <div className="grid grid-cols-1 gap-6">
-        <ReportCard
-          icon={Calendar}
-          title="Attendance — Daily"
-          description="Who was present on a specific day."
-          table={dailyRows}
-          loading={dailyLoading}
-          emptyMessage="No attendance records for this date."
-        >
-          <input
-            type="date"
-            value={dailyDate}
-            onChange={(e) => setDailyDate(e.target.value)}
-            className={inputBase}
-          />
-          <Btn onClick={handleDaily} disabled={dailyLoading} primary icon={RefreshCw}>
-            {dailyLoading ? 'Loading…' : 'Load'}
-          </Btn>
-          <Btn onClick={handleDailyExcel} icon={Download}>
-            Download Excel
-          </Btn>
-        </ReportCard>
 
-        <ReportCard
-          icon={CalendarRange}
-          title="Attendance — Monthly"
-          description="Summary by employee for the selected month."
-          table={monthlyRows}
-          loading={monthlyLoading}
-          emptyMessage="No attendance records for this month."
-        >
-          <input
-            type="month"
-            value={month.slice(0, 7)}
-            onChange={(e) => {
-              const [y, m] = e.target.value.split('-');
-              setMonth(`${y}-${m}-01`);
-            }}
-            className={inputBase}
-          />
-          <Btn onClick={handleMonthly} disabled={monthlyLoading} primary icon={RefreshCw}>
-            {monthlyLoading ? 'Loading…' : 'Load'}
-          </Btn>
-          <Btn onClick={handleMonthlyExcel} icon={Download}>
-            Download Excel
-          </Btn>
-          <Btn onClick={handleYearlyExcel} icon={FileSpreadsheet}>
-            Yearly Excel
-          </Btn>
-        </ReportCard>
-
-        <ReportCard
-          icon={CalendarClock}
-          title="Leave Balance"
-          description="Planned and sick leave balances by employee."
-          table={leaveRows}
-          loading={leaveLoading}
-          emptyMessage="No leave balance data available."
-        >
-          <Btn onClick={handleLeaveBalance} disabled={leaveLoading} primary icon={RefreshCw}>
-            {leaveLoading ? 'Loading…' : 'Load'}
-          </Btn>
-          <Btn
-            onClick={() => downloadCsv(leaveRows, 'leave_balance_report.csv')}
-            icon={Download}
+        {/* DAILY */}
+        {section === 'daily' && (
+          <ReportCard
+            id="report-daily"
+            icon={Calendar}
+            title="Attendance — Daily"
+            description="Who was present on a specific day."
+            table={dailyRows}
+            loading={dailyLoading}
+            emptyMessage="No attendance records for this date."
           >
-            Download CSV
-          </Btn>
-        </ReportCard>
+            <input
+              type="date"
+              value={dailyDate}
+              onChange={(e) => setDailyDate(e.target.value)}
+              className={inputBase}
+            />
+            <input
+              type="text"
+              placeholder="Employee Name"
+              value={searchName}
+              onChange={(e) => setSearchName(e.target.value)}
+              className={inputBase}
+            />
 
-        <ReportCard
-          icon={DollarSign}
-          title="Payroll — Monthly"
-          description="Payroll report for the selected month."
-          table={payrollRows}
-          loading={payrollLoading}
-          emptyMessage="No payroll data for this month."
-        >
-          <input
-            type="month"
-            value={payrollMonth.slice(0, 7)}
-            onChange={(e) => {
-              const [y, m] = e.target.value.split('-');
-              setPayrollMonth(`${y}-${m}-01`);
-            }}
-            className={inputBase}
-          />
-          <Btn onClick={handlePayrollReport} disabled={payrollLoading} primary icon={RefreshCw}>
-            {payrollLoading ? 'Loading…' : 'Load'}
-          </Btn>
-          <Btn
-            onClick={() =>
-              downloadCsv(
-                payrollRows,
-                `payroll_report_${payrollMonth.slice(0, 7) || 'month'}.csv`
-              )
-            }
-            icon={Download}
+            <input
+              type="text"
+              placeholder="Employee ID"
+              value={searchId}
+              onChange={(e) => setSearchId(e.target.value)}
+              className={inputBase}
+            />
+
+            <input
+              type="text"
+              placeholder="Department"
+              value={department}
+              onChange={(e) => setDepartment(e.target.value)}
+              className={inputBase}
+            />
+
+            <select
+              value={employeeType}
+              onChange={(e) => setEmployeeType(e.target.value)}
+              className={inputBase}
+            >
+              <option value="">All Types</option>
+              <option value="FULL_TIME">Full Time</option>
+              <option value="PART_TIME">Part Time</option>
+            </select>
+            <Btn onClick={handleDailyExcel} download icon={Download}>
+              Download Excel
+            </Btn>
+          </ReportCard>
+        )}
+
+        {/* MONTHLY */}
+        {section === 'monthly' && (
+          <ReportCard
+            id="report-monthly"
+            icon={CalendarRange}
+            title="Attendance — Monthly"
+            description="Summary by employee for the selected month."
+            table={monthlyRows}
+            loading={monthlyLoading}
+            emptyMessage="No attendance records for this month."
           >
-            Download CSV
-          </Btn>
-        </ReportCard>
+            <input
+              type="month"
+              value={month.slice(0, 7)}
+              onChange={(e) => {
+                const [y, m] = e.target.value.split('-');
+                setMonth(`${y}-${m}-01`);
+              }}
+              className={inputBase}
+            />
+            <Btn onClick={handleMonthly} disabled={monthlyLoading} primary icon={RefreshCw}>
+              {monthlyLoading ? 'Loading…' : 'Load'}
+            </Btn>
+            <Btn onClick={handleMonthlyExcel} download icon={Download}>
+              Download Excel
+            </Btn>
+            <Btn onClick={handleYearlyExcel} download icon={FileSpreadsheet}>
+              Yearly Excel
+            </Btn>
+          </ReportCard>
+        )}
+
+        {/* LEAVE */}
+        {section === 'leave' && (
+          <ReportCard
+            id="report-leave"
+            icon={CalendarClock}
+            title="Leave Balance"
+            description="Planned and sick leave balances by employee."
+            table={leaveRows}
+            loading={leaveLoading}
+            emptyMessage="No leave balance data available."
+          >
+            <input
+              type="text"
+              placeholder="Employee Name"
+              value={leaveName}
+              onChange={(e) => setLeaveName(e.target.value)}
+              className={inputBase}
+            />
+
+            <input
+              type="text"
+              placeholder="Employee ID"
+              value={leaveId}
+              onChange={(e) => setLeaveId(e.target.value)}
+              className={inputBase}
+            />
+
+            <input
+              type="text"
+              placeholder="Department"
+              value={leaveDept}
+              onChange={(e) => setLeaveDept(e.target.value)}
+              className={inputBase}
+            />
+
+            <select
+              value={leaveType}
+              onChange={(e) => setLeaveType(e.target.value)}
+              className={inputBase}
+            >
+              <option value="">All Types</option>
+              <option value="FULL_TIME">Full Time</option>
+              <option value="INTERN">Intern</option>
+              <option value="CONTRACT">Contract</option>
+            </select>
+
+            <Btn
+              onClick={() => downloadCsv(leaveRows, 'leave_balance_report.csv')}
+              download
+              icon={Download}
+            >
+              Download CSV
+            </Btn>
+          </ReportCard>
+        )}
+
+        {/* PAYROLL */}
+        {section === 'payroll' && (
+          <ReportCard
+            id="report-payroll"
+            icon={DollarSign}
+            title="Payroll — Monthly"
+            description="Payroll report for the selected month."
+            table={payrollRows}
+            loading={payrollLoading}
+            emptyMessage="No payroll data for this month."
+          >
+            <input
+              type="month"
+              value={payrollMonth.slice(0, 7)}
+              onChange={(e) => {
+                const [y, m] = e.target.value.split('-');
+                setPayrollMonth(`${y}-${m}-01`);
+              }}
+              className={inputBase}
+            />
+
+            <input
+              placeholder="Employee Name"
+              value={payName}
+              onChange={(e) => setPayName(e.target.value)}
+              className={inputBase}
+            />
+
+            <input
+              placeholder="Employee ID"
+              value={payId}
+              onChange={(e) => setPayId(e.target.value)}
+              className={inputBase}
+            />
+
+            <input
+              placeholder="Department"
+              value={payDept}
+              onChange={(e) => setPayDept(e.target.value)}
+              className={inputBase}
+            />
+
+            <select
+              value={payType}
+              onChange={(e) => setPayType(e.target.value)}
+              className={inputBase}
+            >
+              <option value="">All Types</option>
+              <option value="FULL_TIME">Full Time</option>
+              <option value="INTERN">Intern</option>
+              <option value="CONTRACT">Contract</option>
+            </select>
+
+            <Btn
+              onClick={() =>
+                downloadCsv(
+                  payrollRows,
+                  `payroll_report_${payrollMonth.slice(0, 7)}.csv`
+                )
+              }
+              download
+              icon={Download}
+            >
+              Download CSV
+            </Btn>
+          </ReportCard>
+        )}
+
       </div>
     </div>
   );

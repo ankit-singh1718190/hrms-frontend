@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { attendanceAPI } from '../api/services';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, History, Pencil, Search, Download } from 'lucide-react';
@@ -21,6 +21,8 @@ const ROLE_COLORS = {
   EMPLOYEE:   'bg-slate-100 text-slate-600',
 };
 
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+
 export default function AttendanceEditHistory() {
   const navigate = useNavigate();
   const today = new Date().toISOString().slice(0, 10);
@@ -32,6 +34,8 @@ export default function AttendanceEditHistory() {
   const [loading, setLoading] = useState(false);
   const [error, setError]   = useState('');
   const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
   const fetchHistory = async () => {
     setLoading(true);
@@ -60,6 +64,16 @@ export default function AttendanceEditHistory() {
       r.reason?.toLowerCase().includes(q)
     );
   });
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [from, to, search, pageSize]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const paginated = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, currentPage, pageSize]);
 
   const exportCSV = () => {
     const headers = ['Date', 'Employee ID', 'Employee Name', 'Department', 'Original Status', 'New Status', 'Edited By', 'Role', 'Edited At', 'Reason', 'Edit Count'];
@@ -105,7 +119,7 @@ export default function AttendanceEditHistory() {
         <button
           onClick={exportCSV}
           disabled={filtered.length === 0}
-          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-50 rounded-lg transition-colors"
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded-lg transition-colors"
         >
           <Download size={15} />
           Export CSV
@@ -196,7 +210,8 @@ export default function AttendanceEditHistory() {
             <p className="text-slate-400 text-sm">No edit records found for the selected period.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+            <div className="overflow-x-auto">
             <table className="w-full min-w-[1100px]">
               <thead className="bg-slate-50">
                 <tr className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
@@ -213,7 +228,7 @@ export default function AttendanceEditHistory() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-sm">
-                {filtered.map((r, idx) => (
+                {paginated.map((r, idx) => (
                   <tr key={`${r.attendanceId}-${idx}`} className="hover:bg-slate-50">
                     <td className="px-5 py-3 text-slate-700 font-medium whitespace-nowrap">{r.date}</td>
                     <td className="px-5 py-3">
@@ -266,7 +281,55 @@ export default function AttendanceEditHistory() {
               </tbody>
             </table>
           </div>
-        )}
+          <div className="px-6 py-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm text-slate-500">
+              <span>Rows per page:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                className="border border-slate-200 rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+              >
+                {PAGE_SIZE_OPTIONS.map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+              <span className="text-slate-400">
+                {((currentPage - 1) * pageSize) + 1}–{Math.min(currentPage * pageSize, filtered.length)} of {filtered.length}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+                className="px-2 py-1.5 rounded-lg text-slate-500 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-xs font-medium"
+              >
+                «
+              </button>
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                ‹
+              </button>
+              <span className="px-2 text-slate-600 text-xs">{currentPage} / {totalPages}</span>
+              <button
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                ›
+              </button>
+              <button
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage === totalPages}
+                className="px-2 py-1.5 rounded-lg text-slate-500 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-xs font-medium"
+              >
+                »
+              </button>
+            </div>
+          </div>          </>        )}
       </div>
     </div>
   );

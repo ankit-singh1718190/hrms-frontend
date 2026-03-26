@@ -4,7 +4,7 @@ import { useAuth } from '../context/useAuth';
 import {
   MapPin, Camera, LogIn, LogOut, Upload, X,
   CheckCircle, AlertCircle, Clock, Timer, CalendarCheck,
-  Pencil, History, ShieldAlert,
+  Pencil, History, ShieldAlert,Download
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -224,6 +224,12 @@ export default function Attendance() {
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminError, setAdminError] = useState('');
 
+  const [search, setSearch] = useState('');
+  const [filterType, setFilterType] = useState('TODAY'); 
+  const [selectedDate, setSelectedDate] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState('');
+  const [selectedYear, setSelectedYear] = useState('');
+
   const [todayRecord, setTodayRecord] = useState(null);
   const [recordLoading, setRecordLoading] = useState(true);
   const [recordError, setRecordError] = useState('');
@@ -298,38 +304,99 @@ export default function Attendance() {
   };
 
   const loadAdminAttendance = async () => {
-    setAdminLoading(true);
-    setAdminError('');
-    const todayIso = new Date().toISOString().slice(0, 10);
-    try {
-      // Use /attendance/date which now returns attendanceId + audit fields
-      const res = await attendanceAPI.getByDate(todayIso);
-      const rows = res?.data?.data || [];
-      setAdminRows(Array.isArray(rows) ? rows : []);
-    } catch (e) {
-      setAdminRows([]);
-      setAdminError(e.response?.data?.message || e.message || 'Failed to load attendance');
-    } finally {
-      setAdminLoading(false);
-    }
-  };
+  setAdminLoading(true);
+  setAdminError('');
 
-  useEffect(() => {
-    if (isPrivilegedRole) {
-      loadAdminAttendance();
-      return;
+  try {
+    let res;
+    const today = new Date();
+
+    const format = (d) => d.toISOString().slice(0, 10);
+
+    if (filterType === 'TODAY') {
+      res = await attendanceAPI.getByDate(format(today));
+    } 
+    else if (filterType === 'YESTERDAY') {
+      const y = new Date();
+      y.setDate(today.getDate() - 1);
+      res = await attendanceAPI.getByDate(format(y));
+    } 
+    else if (filterType === 'DATE' && selectedDate) {
+      res = await attendanceAPI.getByDate(selectedDate);
+    } 
+    else if (filterType === 'MONTH' && selectedMonth) {
+  res = await attendanceAPI.reportMonthly({ month: selectedMonth + '-01' });
+} 
+else if (filterType === 'YEAR' && selectedYear) {
+
+  const months = [
+    '01','02','03','04','05','06',
+    '07','08','09','10','11','12'
+  ];
+
+  let allData = [];
+
+  for (let m of months) {
+    const resMonth = await attendanceAPI.reportMonthly({
+      month: `${selectedYear}-${m}-01`
+    });
+
+    const data = resMonth?.data?.data || [];
+    allData.push(...data);
+  }
+
+  res = { data: { data: allData } };
+} 
+    else {
+      res = await attendanceAPI.getByDate(format(today));
     }
+
+    let rows = res?.data?.data || [];
+    if (search.trim()) {
+      const s = search.toLowerCase();
+      rows = rows.filter(r =>
+        r.employeeName?.toLowerCase().includes(s) ||
+        r.employeeId?.toLowerCase().includes(s)
+      );
+    }
+
+    setAdminRows(rows);
+  } catch (e) {
+    setAdminRows([]);
+    setAdminError(e.response?.data?.message || e.message || 'Failed to load attendance');
+  } finally {
+    setAdminLoading(false);
+  }
+};
+
+ // 1️⃣ Admin data loader
+useEffect(() => {
+  if (isPrivilegedRole) {
+    loadAdminAttendance();
+  }
+}, [
+  isPrivilegedRole,
+  filterType,
+  selectedDate,
+  selectedMonth,
+  selectedYear,
+  search
+]);
+
+// 2️⃣ ✅ ADD THIS (Employee auto load)
+useEffect(() => {
+  if (!isPrivilegedRole) {
     fetchToday();
     getLocation();
-  }, [isPrivilegedRole]);
+  }
+}, []);
+const showRunningTimer = todayRecord?.checkInTime && !todayRecord?.checkOutTime;
 
-  const showRunningTimer = todayRecord?.checkInTime && !todayRecord?.checkOutTime;
-  useEffect(() => {
-    if (!showRunningTimer) return;
-    const id = setInterval(() => setRunningTick((c) => c + 1), 1000);
-    return () => clearInterval(id);
-  }, [showRunningTimer]);
-
+useEffect(() => {
+  if (!showRunningTimer) return;
+  const id = setInterval(() => setRunningTick((c) => c + 1), 1000);
+  return () => clearInterval(id);
+}, [showRunningTimer]);
   const getLocation = () => {
     setLocating(true);
     setGeoError('');
@@ -423,6 +490,37 @@ export default function Attendance() {
     setTimeout(() => setEditSuccess(''), 4000);
     loadAdminAttendance(); // refresh table
   };
+  // ── EXPORT CSV ─────────────────────────────────
+const exportToCSV = () => {
+  if (!adminRows.length) return;
+
+  const headers = [
+    'Employee Name',
+    'Employee ID',
+    'Check In',
+    'Check Out',
+    'Status'
+  ];
+
+  const rows = adminRows.map(r => [
+    r.employeeName,
+    r.employeeId,
+    r.checkIn || '',
+    r.checkOut || '',
+    r.status
+  ]);
+
+  let csvContent =
+    'data:text/csv;charset=utf-8,' +
+    [headers, ...rows].map(e => e.join(',')).join('\n');
+
+  const encodedUri = encodeURI(csvContent);
+  const link = document.createElement('a');
+  link.setAttribute('href', encodedUri);
+  link.setAttribute('download', 'attendance.csv');
+  document.body.appendChild(link);
+  link.click();
+};
 
   const alreadyCheckedIn  = supportsTodayApi ? !!todayRecord?.checkInTime : fallbackCheckedIn;
   const alreadyCheckedOut = supportsTodayApi ? !!todayRecord?.checkOutTime : fallbackCheckedOut;
@@ -457,6 +555,94 @@ export default function Attendance() {
             {editSuccess}
           </div>
         )}
+        {/* ── FILTER BAR ───────────────────────────────── */}
+<div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex items-center justify-between flex-wrap gap-3">
+
+  {/* LEFT SIDE */}
+  <div className="flex items-center gap-3 flex-wrap">
+
+    {/* Search */}
+    <div className="relative">
+      <input
+        type="text"
+        placeholder="Search employee..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm w-64"
+      />
+      <span className="absolute left-2 top-2.5 text-slate-400">🔍</span>
+    </div>
+
+    {/* Filter */}
+    <select
+      value={filterType}
+      onChange={(e) => setFilterType(e.target.value)}
+      className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
+    >
+      <option value="TODAY">Today</option>
+      <option value="YESTERDAY">Yesterday</option>
+      <option value="DATE">Custom Date</option>
+      <option value="MONTH">Month</option>
+      <option value="YEAR">Year</option>
+    </select>
+
+    {filterType === 'DATE' && (
+      <input
+        type="date"
+        value={selectedDate}
+        onChange={(e) => setSelectedDate(e.target.value)}
+        className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
+      />
+    )}
+
+    {filterType === 'MONTH' && (
+      <input
+        type="month"
+        value={selectedMonth}
+        onChange={(e) => setSelectedMonth(e.target.value)}
+        className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
+      />
+    )}
+
+    {filterType === 'YEAR' && (
+  <select
+    value={selectedYear}
+    onChange={(e) => setSelectedYear(e.target.value)}
+    className="px-3 py-2 border border-slate-300 rounded-lg text-sm"
+  >
+    <option value="">Select Year</option>
+    <option value="2026">2026</option>
+    <option value="2025">2025</option>
+    <option value="2024">2024</option>
+  </select>
+)}
+
+    {/* Reset */}
+    <button
+      onClick={() => {
+        setSearch('');
+        setFilterType('TODAY');
+        setSelectedDate('');
+        setSelectedMonth('');
+        setSelectedYear('');
+      }}
+      className="text-sm text-red-500 hover:underline"
+    >
+      Reset
+    </button>
+
+  </div>
+
+  {/* RIGHT SIDE (EXPORT BUTTON) */}
+  <button
+    onClick={exportToCSV}
+    className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors"
+  >
+    <Download size={16} />
+    Export CSV
+  </button>
+
+</div>
 
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">

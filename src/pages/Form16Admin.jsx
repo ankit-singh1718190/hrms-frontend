@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-import { adminAPI } from '../api/services';
-import { FileText, Upload, Loader2, Inbox, Trash2, BarChart2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { adminAPI, employeeAPI } from '../api/services';
+import { FileText, Upload, Loader2, Inbox, Trash2, BarChart2, ChevronDown, X } from 'lucide-react';
 
 function EmptyState({ message }) {
   return (
@@ -11,13 +11,88 @@ function EmptyState({ message }) {
   );
 }
 
+// ─── Employee Dropdown (loads ALL active employees once, shows as plain dropdown) ──
+function EmployeeDropdown({ value, onChange }) {
+  const [employees, setEmployees] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  // Fetch all active employees once on mount
+  useEffect(() => {
+    const fetchEmployees = async () => {
+      setLoading(true);
+      setError('');
+      try {
+        // GET /api/employee/active → ApiResponse<List<EmployeeResponseDTO>>
+        const res = await employeeAPI.getActiveEmployees();
+        const list = res?.data?.data ?? res?.data ?? [];
+        setEmployees(Array.isArray(list) ? list : []);
+      } catch (err) {
+        setError('Failed to load employees');
+        setEmployees([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchEmployees();
+  }, []);
+
+  const handleChange = (e) => {
+    const selectedId = Number(e.target.value);
+    if (!selectedId) {
+      onChange(null);
+      return;
+    }
+    const emp = employees.find((em) => em.id === selectedId);
+    onChange(emp || null);
+  };
+
+  const inputBase =
+    'w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent';
+
+  if (loading) {
+    return (
+      <div className={`${inputBase} flex items-center gap-2 text-slate-400`}>
+        <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
+        <span>Loading employees…</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className={`${inputBase} text-red-500 text-xs`}>{error}</div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <select
+        className={`${inputBase} appearance-none pr-8 cursor-pointer`}
+        value={value?.id ?? ''}
+        onChange={handleChange}
+      >
+        <option value="">— Select Employee ID —</option>
+        {employees.map((emp) => (
+          <option key={emp.id} value={emp.id}>
+            {emp.id}
+          </option>
+        ))}
+      </select>
+      {/* Chevron icon */}
+      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 export default function Form16Admin() {
   const [fy, setFy] = useState('2024-25');
   const [bulkFile, setBulkFile] = useState(null);
   const [bulkUploading, setBulkUploading] = useState(false);
   const [bulkMessage, setBulkMessage] = useState('');
 
-  const [singleEmpId, setSingleEmpId] = useState('');
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [singleFy, setSingleFy] = useState('2024-25');
   const [singleFile, setSingleFile] = useState(null);
   const [singleUploading, setSingleUploading] = useState(false);
@@ -64,10 +139,8 @@ export default function Form16Admin() {
     setBulkMessage('');
     try {
       const res = await adminAPI.uploadForm16Bulk(fy, bulkFile);
-      const msg = res?.data?.message || 'Bulk upload completed.';
-      setBulkMessage(msg);
+      setBulkMessage(res?.data?.message || 'Bulk upload completed.');
       setBulkFile(null);
-      (e.target.reset?.() ?? null);
       loadData(fy);
     } catch (err) {
       setBulkMessage(err.response?.data?.message || err.message || 'Bulk upload failed.');
@@ -78,22 +151,17 @@ export default function Form16Admin() {
 
   const handleSingleUpload = async (e) => {
     e.preventDefault();
-    if (!singleEmpId || !singleFy || !singleFile) {
-      setSingleMessage('Employee ID, FY, and PDF file are required.');
-      return;
-    }
-    const empIdNum = Number(singleEmpId);
-    if (!Number.isFinite(empIdNum) || empIdNum <= 0) {
-      setSingleMessage('Employee ID must be a valid numeric database ID.');
+    if (!selectedEmployee || !singleFy || !singleFile) {
+      setSingleMessage('Please select an employee, enter FY, and choose a PDF file.');
       return;
     }
     setSingleUploading(true);
     setSingleMessage('');
     try {
-      const res = await adminAPI.uploadForm16Single(empIdNum, singleFy, singleFile);
-      const msg = res?.data?.message || 'Form 16 uploaded successfully.';
-      setSingleMessage(msg);
+      const res = await adminAPI.uploadForm16Single(selectedEmployee.id, singleFy, singleFile);
+      setSingleMessage(res?.data?.message || 'Form 16 uploaded successfully.');
       setSingleFile(null);
+      setSelectedEmployee(null);
       loadData(singleFy);
     } catch (err) {
       setSingleMessage(err.response?.data?.message || err.message || 'Single upload failed.');
@@ -125,7 +193,7 @@ export default function Form16Admin() {
         </p>
       </header>
 
-      {/* Bulk upload + status */}
+      {/* Bulk upload */}
       <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -153,14 +221,9 @@ export default function Form16Admin() {
           </div>
         </div>
         <div className="p-6 space-y-4">
-          <form
-            onSubmit={handleBulkUpload}
-            className="flex flex-col md:flex-row md:items-end gap-3 md:gap-4"
-          >
+          <form onSubmit={handleBulkUpload} className="flex flex-col md:flex-row md:items-end gap-3 md:gap-4">
             <div className="md:w-40">
-              <label className="block text-xs font-medium text-slate-600 mb-1">
-                Financial Year *
-              </label>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Financial Year *</label>
               <input
                 type="text"
                 value={fy}
@@ -170,9 +233,7 @@ export default function Form16Admin() {
               />
             </div>
             <div className="flex-1">
-              <label className="block text-xs font-medium text-slate-600 mb-1">
-                ZIP File *
-              </label>
+              <label className="block text-xs font-medium text-slate-600 mb-1">ZIP File *</label>
               <input
                 type="file"
                 accept=".zip"
@@ -197,7 +258,7 @@ export default function Form16Admin() {
         </div>
       </section>
 
-      {/* Single upload */}
+      {/* ── Single Upload ── */}
       <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-violet-100 text-violet-600 flex items-center justify-center">
@@ -211,60 +272,105 @@ export default function Form16Admin() {
           </div>
         </div>
         <div className="p-6 space-y-4">
-          <form
-            onSubmit={handleSingleUpload}
-            className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4 items-end"
-          >
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">
-                Employee DB ID *
-              </label>
-              <input
-                type="number"
-                value={singleEmpId}
-                onChange={(e) => setSingleEmpId(e.target.value)}
-                className={inputBase}
-                placeholder="Numeric employee id"
-              />
+          <form onSubmit={handleSingleUpload} className="space-y-4">
+            {/* Row — Employee ID dropdown + Employee Name (auto-filled) + FY + PDF */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 md:gap-4 items-end">
+
+              {/* Employee DB ID — plain dropdown showing only IDs */}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">
+                  Employee DB ID *
+                </label>
+                <EmployeeDropdown
+                  value={selectedEmployee}
+                  onChange={(emp) => {
+                    setSelectedEmployee(emp);
+                    setSingleMessage('');
+                  }}
+                />
+              </div>
+
+              {/* Employee Name — auto-filled, read-only */}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">
+                  Employee Name
+                </label>
+                <input
+                  type="text"
+                  readOnly
+                  value={selectedEmployee?.fullName ?? ''}
+                  placeholder="Auto-filled on selection"
+                  className={`${inputBase} bg-slate-50 text-indigo-700 font-medium cursor-default`}
+                />
+              </div>
+
+              {/* Financial Year */}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">
+                  Financial Year *
+                </label>
+                <input
+                  type="text"
+                  value={singleFy}
+                  onChange={(e) => setSingleFy(e.target.value)}
+                  className={inputBase}
+                  placeholder="2024-25"
+                />
+              </div>
+
+              {/* PDF File */}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">
+                  PDF File *
+                </label>
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  onChange={(e) => setSingleFile(e.target.files?.[0] || null)}
+                  className={inputBase}
+                />
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">
-                Financial Year *
-              </label>
-              <input
-                type="text"
-                value={singleFy}
-                onChange={(e) => setSingleFy(e.target.value)}
-                className={inputBase}
-                placeholder="2024-25"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">
-                PDF File *
-              </label>
-              <input
-                type="file"
-                accept="application/pdf"
-                onChange={(e) => setSingleFile(e.target.files?.[0] || null)}
-                className={inputBase}
-              />
-            </div>
-            <div className="md:col-span-3 flex justify-end">
+
+            {/* Selected employee summary chip */}
+            {selectedEmployee && (
+              <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-indigo-50 border border-indigo-100 w-fit">
+                <div className="w-7 h-7 rounded-full bg-indigo-200 text-indigo-700 flex items-center justify-center text-xs font-bold shrink-0">
+                  {selectedEmployee.fullName?.[0]?.toUpperCase()}
+                </div>
+                <div>
+                  <p className="text-xs text-indigo-500 font-medium leading-none mb-0.5">Selected Employee</p>
+                  <p className="text-sm font-semibold text-indigo-800 leading-none">
+                    {selectedEmployee.fullName}
+                    <span className="ml-2 text-xs font-normal text-indigo-400">
+                      (DB ID: {selectedEmployee.id})
+                    </span>
+                  </p>
+                </div>
+                {/* Clear button */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedEmployee(null)}
+                  className="ml-2 text-indigo-300 hover:text-indigo-600"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
+            {/* Upload button */}
+            <div className="flex justify-end">
               <button
                 type="submit"
                 disabled={singleUploading}
                 className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 text-white text-sm font-medium px-4 py-2.5 hover:bg-indigo-700 disabled:opacity-50"
               >
-                {singleUploading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Upload size={16} />
-                )}
+                {singleUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload size={16} />}
                 {singleUploading ? 'Uploading…' : 'Upload PDF'}
               </button>
             </div>
           </form>
+
           {singleMessage && (
             <p className="text-xs text-slate-500 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">
               {singleMessage}
@@ -318,9 +424,7 @@ export default function Form16Admin() {
                       <td className="px-4 py-2 text-slate-700">
                         {d.uploadedAt ? new Date(d.uploadedAt).toLocaleString('en-IN') : '—'}
                       </td>
-                      <td className="px-4 py-2 text-slate-700">
-                        {d.downloaded ? 'Yes' : 'No'}
-                      </td>
+                      <td className="px-4 py-2 text-slate-700">{d.downloaded ? 'Yes' : 'No'}</td>
                       <td className="px-4 py-2 text-right">
                         <button
                           type="button"
@@ -342,4 +446,3 @@ export default function Form16Admin() {
     </div>
   );
 }
-

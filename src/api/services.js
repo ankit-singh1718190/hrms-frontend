@@ -36,12 +36,20 @@ export const adminAPI = {
     api.get('/admin/form16/status', { params: { fy: financialYear } }),
   deleteForm16: (id) => api.delete(`/admin/form16/${id}`),
 };
+export const leavePolicyAPI = {
+  create: (data) => api.post('/admin/leave-policy', data),
+  getAll: () => api.get('/admin/leave-policy'),
+  getById: (id) => api.get(`/admin/leave-policy/${id}`),
+  update: (id, data) => api.put(`/admin/leave-policy/${id}`, data),
+  delete: (id) => api.delete(`/admin/leave-policy/${id}`),
+};
 
 // Employee
 export const employeeAPI = {
   register: (data) => api.post('/employee/register', data),
   getById: (id) => api.get(`/employee/${id}`),
   getAll: (params) => api.get('/employee', { params }),
+  getActiveEmployees: () => api.get('/employee/active'),
   search: (q, params = {}) => api.get('/employee/search', { params: { q, page: 0, size: 20, ...params } }),
   filterByDepartment: (dept) => api.get('/employee/filter/department', { params: { dept } }),
   filterByStatus: (status) => api.get('/employee/filter/status', { params: { status } }),
@@ -52,6 +60,7 @@ export const employeeAPI = {
   getMyForm16List: () => api.get('/employee/form16/my-list'),
   downloadMyForm16: (fy) =>
     api.get('/employee/form16/download', { params: { fy }, responseType: 'blob' }),
+  
 };
 
 // Attendance
@@ -86,10 +95,10 @@ export const leaveAPI = {
   reject: (id, reason) => api.patch(`/leaves/${id}/reject`, null, { params: { reason } }),
   getByEmployee: (empId, params) => api.get(`/leaves/employee/${empId}`, { params }),
   getPending: (params) => api.get('/leaves/pending', { params }),
-  getReportBalance: () => api.get('/leaves/report/balance'),
+  getReportBalance: (params) =>api.get('/leaves/report/balance', { params }),
+  getAll: (params) => api.get('/leaves', { params }),
 };
 
-// Payroll
 export const payrollAPI = {
   generate: (month) => api.post('/payroll/generate', null, { params: { month } }),
   approve: (id) => api.put(`/payroll/${id}/approve`),
@@ -98,8 +107,12 @@ export const payrollAPI = {
   getByMonth: (month, params) => api.get('/payroll/month', { params: { month, ...params } }),
   getByEmployee: (employeeId) => api.get(`/payroll/employee/${employeeId}`),
   getMyPayslips: () => api.get('/payroll/my-payslips'),
+  downloadPayslip: (id) =>
+    api.get(`/payroll/${id}/payslip`, {
+      responseType: 'blob',
+    }),
   getSummary: (month) => api.get('/payroll/summary', { params: { month } }),
-  getReport: (month) => api.get('/payroll/report', { params: { month } }),
+  getReport: (params) =>api.get('/payroll/report', { params }),
 };
 
 // Dashboard
@@ -149,4 +162,5 @@ export const uploadAPI = {
     form.append('file', file);
     return api.post('/upload/document', form, { headers: { 'Content-Type': 'multipart/form-data' } });
   },
+  
 };
