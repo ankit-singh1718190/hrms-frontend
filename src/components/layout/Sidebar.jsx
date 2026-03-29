@@ -16,6 +16,7 @@ const navItems = [
   { to: '/leaves', icon: CalendarDays, label: 'Leave Management', roles: ['ADMIN','SUPER_ADMIN','HR','MANAGER','EMPLOYEE'] },
   { to: '/calendar', icon: Calendar, label: 'Calendar', roles: ['ADMIN','SUPER_ADMIN','HR','MANAGER','EMPLOYEE'] },
   { to: '/payroll', icon: DollarSign, label: 'Payroll', roles: ['ADMIN','SUPER_ADMIN','HR','MANAGER'] },
+  { to: '/payslips', icon: FileSpreadsheet, label: 'Payslips', roles: ['ADMIN','SUPER_ADMIN','HR','MANAGER','EMPLOYEE'] },
 
   { to: '/admins', icon: ShieldCheck, label: 'Admin Users', roles: ['ADMIN','SUPER_ADMIN'] },
   { to: '/leave-policy', icon: CalendarDays, label: 'Leave Policy', roles: ['ADMIN','SUPER_ADMIN'] },

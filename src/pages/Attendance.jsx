@@ -411,13 +411,7 @@ useEffect(() => {
             { headers: { 'Accept': 'application/json', 'Accept-Language': 'en', 'User-Agent': 'HRMS-Attendance/1.0' } }
           );
           const data = await res.json();
-          const addr = data.address;
-          if (addr && typeof addr === 'object') {
-            const parts = [addr.road, addr.neighbourhood || addr.suburb, addr.city || addr.town, addr.state, addr.postcode, addr.country].filter(Boolean);
-            setAddress([...new Set(parts)].join(', ') || data.display_name || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
-          } else {
-            setAddress(data.display_name || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
-          }
+          setAddress(data.display_name || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
         } catch { setAddress(`${latitude.toFixed(4)}, ${longitude.toFixed(4)}`); }
         setLocating(false);
       },

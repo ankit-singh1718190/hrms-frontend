@@ -542,71 +542,39 @@ export default function Calendar() {
       {/* ── ADMIN / HR / MANAGER VIEW ──────────────────────────────────────── */}
       {!loading && canManage && (
         <>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-                <span className="font-medium text-slate-700 flex items-center gap-2">
-                  <Sun size={18} />
-                  {viewType === 'MONTH'
-                    ? `Holidays in ${monthLabel}`
-                    : `All Holidays in ${year}`}
-                </span>
-              </div>
-              <div className="p-4 max-h-[360px] overflow-y-auto">
-                {adminLeaves.length === 0 ? (
-                  <p className="text-slate-500 text-sm">No leaves in this month.</p>
-                ) : (
-                  <ul className="space-y-2">
-                    {adminLeaves.map((l) => (
-                      <li key={l.id} className="flex flex-wrap items-center justify-between gap-2 py-2 px-3 rounded-lg bg-slate-50 border border-slate-100">
-                        <div>
-                          <span className="font-medium text-slate-800">{l.employeeName || l.employeeId}</span>
-                          <span className="text-slate-500 text-sm ml-2">{l.leaveType} • {formatDate(l.startDate)} – {formatDate(l.endDate)}</span>
-                        </div>
-                        <span className={`text-xs px-2 py-0.5 rounded ${l.status === 'PENDING' ? 'bg-amber-100 text-amber-800' : l.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}`}>
-                          {l.status}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+              <span className="font-medium text-slate-700 flex items-center gap-2">
+                <Sun size={18} /> Holidays in {monthLabel}
+              </span>
+              <button type="button"
+                onClick={() => { setEditingHoliday(null); setHolidayForm({ name: '', holidayDate: '', description: '', holidayType: 'PUBLIC' }); setShowHolidayModal(true); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">
+                <Plus size={16} /> Add
+              </button>
             </div>
-
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-                <span className="font-medium text-slate-700 flex items-center gap-2">
-                  <Sun size={18} /> Holidays in {monthLabel}
-                </span>
-                <button type="button"
-                  onClick={() => { setEditingHoliday(null); setHolidayForm({ name: '', holidayDate: '', description: '', holidayType: 'PUBLIC' }); setShowHolidayModal(true); }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700">
-                  <Plus size={16} /> Add
-                </button>
-              </div>
-              <div className="p-4 max-h-[360px] overflow-y-auto">
-                {(viewType === 'MONTH' ? adminHolidays : holidaysByYear).length === 0 ? (
-                  <p className="text-slate-500 text-sm">No holidays found.</p>
-                ) : (
-                  <ul className="space-y-2">
-                    {(viewType === 'MONTH' ? adminHolidays : holidaysByYear).map((h) => (
-                      <li key={h.id} className="flex items-center justify-between gap-2 py-2 px-3 rounded-lg bg-violet-50/50 border border-violet-100">
-                        <div>
-                          <span className="font-medium text-slate-800">{h.name}</span>
-                          <span className="text-slate-500 text-sm ml-2">
-                            {formatDate(h.holidayDate)}
+            <div className="p-4 max-h-[360px] overflow-y-auto">
+              {(viewType === 'MONTH' ? adminHolidays : holidaysByYear).length === 0 ? (
+                <p className="text-slate-500 text-sm">No holidays found.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {(viewType === 'MONTH' ? adminHolidays : holidaysByYear).map((h) => (
+                    <li key={h.id} className="flex items-center justify-between gap-2 py-2 px-3 rounded-lg bg-violet-50/50 border border-violet-100">
+                      <div>
+                        <span className="font-medium text-slate-800">{h.name}</span>
+                        <span className="text-slate-500 text-sm ml-2">
+                          {formatDate(h.holidayDate)}
+                        </span>
+                        {h.holidayType && (
+                          <span className="text-xs text-slate-400 ml-2">
+                            ({h.holidayType})
                           </span>
-                          {h.holidayType && (
-                            <span className="text-xs text-slate-400 ml-2">
-                              ({h.holidayType})
-                            </span>
-                          )}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
 

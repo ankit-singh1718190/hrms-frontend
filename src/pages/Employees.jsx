@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useAuth } from '../context/useAuth';
 import { employeeAPI } from '../api/services';
 import { Plus, Search, Eye, Edit2, Trash2, X, ChevronLeft, ChevronRight, UserCheck } from 'lucide-react';
 
@@ -80,6 +81,8 @@ const EMPTY = {
 };
 
 export default function Employees() {
+  const { user, isAdmin, isHR, isManager } = useAuth();
+
   const [employees,     setEmployees]     = useState([]);
   const [total,         setTotal]         = useState(0);
   const [page,          setPage]          = useState(0);
@@ -147,7 +150,10 @@ export default function Employees() {
     setLoading(true); setError('');
     try {
       let res;
-      if (search.trim()) {
+      if (isManager) {
+        // Manager can only see their reportees (backend should honor this too)
+        res = await employeeAPI.getAll({ reportingManager: user?.employeeId, page: pg, size: pageSize, sortBy: 'id', dir: 'asc' });
+      } else if (search.trim()) {
         res = await employeeAPI.search(search.trim());
       } else if (deptFilter) {
         res = await employeeAPI.filterByDepartment(deptFilter);

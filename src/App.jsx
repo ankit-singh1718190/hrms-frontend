@@ -72,7 +72,7 @@ function AppRoutes() {
         <Route
           path="/attendance/edit-history"
           element={
-            <ProtectedRoute roles={['ADMIN', 'SUPER_ADMIN', 'HR']}>
+            <ProtectedRoute roles={['ADMIN', 'SUPER_ADMIN', 'HR', 'MANAGER']}>
               <AttendanceEditHistory />
             </ProtectedRoute>
           }
@@ -92,7 +92,16 @@ function AppRoutes() {
         <Route
           path="/payroll"
           element={
-            <ProtectedRoute roles={['ADMIN', 'SUPER_ADMIN', 'HR', 'EMPLOYEE']}>
+            <ProtectedRoute roles={['ADMIN', 'SUPER_ADMIN', 'HR', 'MANAGER', 'EMPLOYEE']}>
+              <Payroll />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/payslips"
+          element={
+            <ProtectedRoute roles={['ADMIN', 'SUPER_ADMIN', 'HR', 'MANAGER', 'EMPLOYEE']}>
               <Payroll />
             </ProtectedRoute>
           }
@@ -167,7 +176,7 @@ function AppRoutes() {
         <Route
           path="/form16-admin"
           element={
-            <ProtectedRoute roles={['ADMIN', 'SUPER_ADMIN', 'HR']}>
+            <ProtectedRoute roles={['ADMIN', 'SUPER_ADMIN', 'HR', 'MANAGER']}>
               <Form16Admin />
             </ProtectedRoute>
           }
