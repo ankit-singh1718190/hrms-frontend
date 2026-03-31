@@ -218,7 +218,7 @@ function AuditBadge({ row }) {
 export default function Attendance() {
   const { isAdmin, isHR, isManager } = useAuth();
   const navigate = useNavigate();
-  const isPrivilegedRole = isAdmin || isHR || isManager;
+  const isPrivilegedRole = isAdmin || isHR
 
   const [adminRows, setAdminRows] = useState([]);
   const [adminLoading, setAdminLoading] = useState(false);

@@ -167,7 +167,7 @@ function LeaveBalanceSection({ employeeDbId }) {
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 export default function Leaves() {
   const { user, isAdmin, isHR, isManager } = useAuth();
-  const canManage = isAdmin || isHR || isManager;
+  const canManage = isAdmin || isHR;
 
   const [leaves, setLeaves] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -178,7 +178,7 @@ export default function Leaves() {
   const [totalPages, setTotalPages] = useState(0);
 
   const [filters, setFilters] = useState({
-    status: '',
+    status: canManage ? 'PENDING' : '',
     leaveType: '',
     employeeName: ''
   });
@@ -353,7 +353,7 @@ export default function Leaves() {
         </select>
 
       </div>
-     
+
 
       {/* Leave requests table */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
@@ -400,7 +400,7 @@ export default function Leaves() {
           </tbody>
         </table>
       </div>
-       <div className="flex justify-between items-center mt-4">
+      <div className="flex justify-between items-center mt-4">
 
         <button
           disabled={page === 0}

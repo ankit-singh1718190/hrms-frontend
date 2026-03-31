@@ -75,6 +75,7 @@ function EmployeeDropdown({ value, onChange }) {
         <option value="">— Select Employee ID —</option>
         {employees.map((emp) => (
           <option key={emp.id} value={emp.id}>
+            {emp.fullName} ({emp.employeeId})
             {emp.id}
           </option>
         ))}

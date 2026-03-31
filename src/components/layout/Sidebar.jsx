@@ -9,27 +9,32 @@ import { useAuth } from '../../context/useAuth';
 import { useState } from 'react';
 
 const navItems = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['ADMIN','SUPER_ADMIN','HR','MANAGER','EMPLOYEE'] },
-  { to: '/employees', icon: Users, label: 'Employees', roles: ['ADMIN','SUPER_ADMIN','HR','MANAGER'] },
-  { to: '/attendance', icon: Clock, label: 'Attendance', roles: ['ADMIN','SUPER_ADMIN','HR','MANAGER','EMPLOYEE'] },
-  { to: '/attendance/edit-history', icon: History, label: 'Edit History', roles: ['ADMIN','SUPER_ADMIN','HR','MANAGER'], indent: true },
-  { to: '/leaves', icon: CalendarDays, label: 'Leave Management', roles: ['ADMIN','SUPER_ADMIN','HR','MANAGER','EMPLOYEE'] },
-  { to: '/calendar', icon: Calendar, label: 'Calendar', roles: ['ADMIN','SUPER_ADMIN','HR','MANAGER','EMPLOYEE'] },
-  { to: '/payroll', icon: DollarSign, label: 'Payroll', roles: ['ADMIN','SUPER_ADMIN','HR','MANAGER'] },
-  { to: '/payslips', icon: FileSpreadsheet, label: 'Payslips', roles: ['ADMIN','SUPER_ADMIN','HR','MANAGER','EMPLOYEE'] },
+  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['ADMIN', 'SUPER_ADMIN', 'HR', 'MANAGER', 'EMPLOYEE'] },
 
-  { to: '/admins', icon: ShieldCheck, label: 'Admin Users', roles: ['ADMIN','SUPER_ADMIN'] },
-  { to: '/leave-policy', icon: CalendarDays, label: 'Leave Policy', roles: ['ADMIN','SUPER_ADMIN'] },
+  // 🔷 Manager Section
+  { to: '/employees', icon: Users, label: 'Employees', roles: ['ADMIN', 'SUPER_ADMIN', 'HR', 'MANAGER'] },
+  { to: '/payroll', icon: DollarSign, label: 'Payroll', roles: ['ADMIN', 'SUPER_ADMIN', 'HR', 'MANAGER'] },
 
-  { to: '/emails', icon: Mail, label: 'Email Logs', roles: ['ADMIN','SUPER_ADMIN'] },
-  { to: '/reports', icon: BarChart3, label: 'Reports', roles: ['ADMIN','SUPER_ADMIN','HR','MANAGER'] },
-  { to: '/reports/daily', icon: Calendar, label: 'Daily Attendance', roles: ['ADMIN','SUPER_ADMIN','HR','MANAGER'], indent: true },
-  { to: '/reports/monthly', icon: CalendarRange, label: 'Monthly Attendance', roles: ['ADMIN','SUPER_ADMIN','HR','MANAGER'], indent: true },
-  { to: '/reports/leave', icon: CalendarClock, label: 'Leave Balance', roles: ['ADMIN','SUPER_ADMIN','HR','MANAGER'], indent: true },
-  { to: '/reports/payroll', icon: FileSpreadsheet, label: 'Payroll Report', roles: ['ADMIN','SUPER_ADMIN','HR','MANAGER'], indent: true },
+  { to: '/reports', icon: BarChart3, label: 'Reports', roles: ['ADMIN', 'SUPER_ADMIN', 'HR', 'MANAGER'] },
+  { to: '/reports/daily', icon: Calendar, label: 'Daily Attendance', roles: ['ADMIN', 'SUPER_ADMIN', 'HR', 'MANAGER'], indent: true },
+  { to: '/reports/monthly', icon: CalendarRange, label: 'Monthly Attendance', roles: ['ADMIN', 'SUPER_ADMIN', 'HR', 'MANAGER'], indent: true },
+  { to: '/reports/leave', icon: CalendarClock, label: 'Leave Balance', roles: ['ADMIN', 'SUPER_ADMIN', 'HR', 'MANAGER'], indent: true },
+  { to: '/reports/payroll', icon: FileSpreadsheet, label: 'Payroll Report', roles: ['ADMIN', 'SUPER_ADMIN', 'HR', 'MANAGER'], indent: true },
 
-  { to: '/form16-admin', icon: FileText, label: 'Form 16 Upload', roles: ['ADMIN','SUPER_ADMIN','HR','MANAGER'] },
-  { to: '/form16', icon: FileText, label: 'Form 16', roles: ['EMPLOYEE'] },
+  { to: '/form16-admin', icon: FileText, label: 'Form 16 Upload', roles: ['ADMIN', 'SUPER_ADMIN', 'HR', 'MANAGER'] },
+
+  // 🔶 My Workspace (Employee-like)
+  { to: '/attendance', icon: Clock, label: 'My Attendance', roles: ['EMPLOYEE', 'MANAGER'] },
+  { to: '/leaves', icon: CalendarDays, label: 'My Leaves', roles: ['EMPLOYEE', 'MANAGER'] },
+  { to: '/calendar', icon: Calendar, label: 'My Calendar', roles: ['EMPLOYEE', 'MANAGER'] },
+  { to: '/payslips', icon: FileSpreadsheet, label: 'My Payslips', roles: ['EMPLOYEE', 'MANAGER'] },
+  { to: '/form16', icon: FileText, label: 'My Form 16', roles: ['EMPLOYEE', 'MANAGER'] },
+
+  // 🔐 Admin Only
+  { to: '/admins', icon: ShieldCheck, label: 'Admin Users', roles: ['ADMIN', 'SUPER_ADMIN'] },
+  { to: '/leave-policy', icon: CalendarDays, label: 'Leave Policy', roles: ['ADMIN', 'SUPER_ADMIN'] },
+  { to: '/emails', icon: Mail, label: 'Email Logs', roles: ['ADMIN', 'SUPER_ADMIN'] },
+  { to: '/leaves', icon: CalendarDays, label: 'Leave Approvals', roles: ['ADMIN', 'SUPER_ADMIN', 'MANAGER','HR'] },
 ];
 export default function Sidebar() {
   const { user, logout } = useAuth();
@@ -73,7 +78,7 @@ export default function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 py-4 px-2 space-y-1">
-        {filtered.map(({ to, icon: Icon, label, indent }) => {
+        {filtered.map(({ to, icon: Icon, label, indent }, index) => {
 
           // 👉 Reports toggle (NO navigation)
           if (to === '/reports') {
@@ -92,26 +97,51 @@ export default function Sidebar() {
           // 👉 Hide sub items until Reports clicked
           if (to.startsWith('/reports/') && !showReports) return null;
 
+          // 🔥 Detect My Workspace section
+          const isMyWorkspaceItem = [
+            '/attendance',
+            '/leaves',
+            '/calendar',
+            '/payslips',
+            '/form16'
+          ].includes(to);
+
           return (
-            <NavLink
-              key={to}
-              to={to}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium
-                ${indent && !collapsed ? 'ml-4 pl-3' : ''}
-                ${isActive
-                  ? indent
-                    ? 'bg-amber-600/20 text-amber-400'
-                    : 'bg-indigo-600 text-white'
-                  : indent
-                    ? 'text-slate-400 hover:bg-amber-600/10 hover:text-amber-300'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                }`
+            <div key={to}>
+
+              {/* 🔶 My Workspace Divider (only once) */}
+              {isMyWorkspaceItem &&
+                user?.role === 'MANAGER' &&
+                !collapsed &&
+                index === filtered.findIndex(i =>
+                  ['/attendance', '/leaves', '/calendar', '/payslips', '/form16'].includes(i.to)
+                ) && (
+                  <p className="text-xs text-slate-500 px-3 mt-4 mb-1">
+                    My Workspace
+                  </p>
+                )
               }
-            >
-              <Icon size={indent ? 15 : 18} />
-              {!collapsed && label}
-            </NavLink>
+
+              <NavLink
+                to={to}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium
+            ${indent && !collapsed ? 'ml-4 pl-3' : ''}
+            ${isActive
+                    ? indent
+                      ? 'bg-amber-600/20 text-amber-400'
+                      : 'bg-indigo-600 text-white'
+                    : indent
+                      ? 'text-slate-400 hover:bg-amber-600/10 hover:text-amber-300'
+                      : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                  }`
+                }
+              >
+                <Icon size={indent ? 15 : 18} />
+                {!collapsed && label}
+              </NavLink>
+
+            </div>
           );
         })}
       </nav>

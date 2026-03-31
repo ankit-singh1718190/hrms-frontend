@@ -16,8 +16,8 @@ const STATUS_STYLES = {
 const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 
 export default function Payroll() {
-  const { user, isAdmin, isHR, isEmployee } = useAuth();
-  const canManage = isAdmin || isHR;
+  const { user, isAdmin, isHR, isManager, isEmployee } = useAuth();
+  const canManage = isAdmin || isHR || isManager;
 
   const currentMonth = new Date().toISOString().slice(0, 7);
   const [month, setMonth] = useState(currentMonth);
@@ -66,7 +66,7 @@ export default function Payroll() {
   const handleDownload = async (id) => {
     try {
       const res = await payrollAPI.downloadPayslip(id);
-      const blob = new Blob([res.data], { type: res.headers['content-type'] });
+      const blob = new Blob([res.data], { type: 'application/pdf' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -75,8 +75,9 @@ export default function Payroll() {
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
-    } catch {
-      alert('Download failed');
+    } catch (e) {
+      console.error(e);
+      alert(e.response?.data?.message || e.message || 'Download failed');
     }
   };
 
@@ -85,15 +86,12 @@ export default function Payroll() {
     setError('');
     try {
       let res;
-      if (isEmployee) {
-        res = await payrollAPI.getByEmployee(user.id);
-        const data = unwrap(res);
-        setPayrolls(Array.isArray(data) ? data : data?.content ?? []);
-      } else {
+      if (canManage) {
         const monthParam = `${month}-01`;
         res = await payrollAPI.getByMonth(monthParam, { page: 0, size: 500 });
-        const data = unwrap(res);
-        setPayrolls(Array.isArray(data) ? data : data?.content ?? []);
+        setPayrolls(unwrap(res) || []);
+      } else {
+        setPayrolls([]); // Clear payrolls for non-managers until we fetch their specific data
       }
     } catch (e) {
       const msg = e.response?.data?.message || e.message || 'Failed to load payroll';
@@ -120,9 +118,18 @@ export default function Payroll() {
 
   const handleOpenEditForSelected = () => {
     if (!selectedEmployeeId) return;
-    const row = payrolls.find((p) => String(p.employeeId) === String(selectedEmployeeId));
-    if (row) setEditing(row);
-    else alert('No payroll record for this employee in the selected month.');
+    // Use existing record if available, otherwise open a blank form for this employee
+    const existing = payrolls.find((p) => String(p.employeeId) === String(selectedEmployeeId));
+    if (existing) {
+      setEditing(existing);
+    } else {
+      const emp = employees.find((e) => String(e.employeeId) === String(selectedEmployeeId));
+      setEditing({
+        employeeId: selectedEmployeeId,
+        employeeName: emp ? `${emp.firstName} ${emp.lastName ?? ''}`.trim() : selectedEmployeeId,
+        month: `${month}-01`,
+      });
+    }
   };
 
   const handleGenerate = async () => {
@@ -482,11 +489,10 @@ export default function Payroll() {
                   <button
                     key={i}
                     onClick={() => setCurrentPage(i)}
-                    className={`w-8 h-8 rounded-lg text-xs font-medium transition-colors ${
-                      i === currentPage
-                        ? 'bg-indigo-600 text-white shadow-sm'
-                        : 'text-slate-600 hover:bg-slate-100'
-                    }`}
+                    className={`w-8 h-8 rounded-lg text-xs font-medium transition-colors ${i === currentPage
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'text-slate-600 hover:bg-slate-100'
+                      }`}
                   >
                     {i}
                   </button>
@@ -562,14 +568,14 @@ function EditPayrollModal({ payroll, month, onClose, onSaved }) {
       try {
         // Fetch payroll data for this specific employee in the current month
         const monthParam = `${month}-01`;
-        const res = await payrollAPI.getByMonth(monthParam, { 
-          page: 0, 
+        const res = await payrollAPI.getByMonth(monthParam, {
+          page: 0,
           size: 500,
-          employeeId: payroll.employeeId 
+          employeeId: payroll.employeeId
         });
         const data = res?.data?.data;
         const list = Array.isArray(data) ? data : data?.content ?? [];
-        
+
         // Find the payroll record for this employee
         const record = list.find((p) => String(p.employeeId) === String(payroll.employeeId));
         if (record) {

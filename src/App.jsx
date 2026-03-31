@@ -23,6 +23,8 @@ import Form16 from './pages/Form16';
 import Form16Admin from './pages/Form16Admin';
 import LeavePolicy from './pages/LeavePolicy';
 import MonthlyAttendance from './pages/MonthlyAttendance';
+import MyPayslips from './pages/MyPayslips';
+import MyForm16 from './pages/MyForm16';
 
 function ProtectedRoute({ children, roles }) {
   const { user } = useAuth();
@@ -101,8 +103,8 @@ function AppRoutes() {
         <Route
           path="/payslips"
           element={
-            <ProtectedRoute roles={['ADMIN', 'SUPER_ADMIN', 'HR', 'MANAGER', 'EMPLOYEE']}>
-              <Payroll />
+            <ProtectedRoute roles={['EMPLOYEE', 'MANAGER']}>
+              <MyPayslips />
             </ProtectedRoute>
           }
         />
@@ -185,7 +187,7 @@ function AppRoutes() {
         <Route
           path="/form16"
           element={
-            <ProtectedRoute roles={['EMPLOYEE']}>
+            <ProtectedRoute roles={['EMPLOYEE','MANAGER']}>
               <Form16 />
             </ProtectedRoute>
           }

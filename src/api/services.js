@@ -106,7 +106,7 @@ export const payrollAPI = {
   save: (payload) => api.post('/payroll/save', payload),
   getByMonth: (month, params) => api.get('/payroll/month', { params: { month, ...params } }),
   getByEmployee: (employeeId) => api.get(`/payroll/employee/${employeeId}`),
-  getMyPayslips: () => api.get('/payroll/my-payslips'),
+  getMyPayroll: (month) =>api.get('/payroll/my', { params: { month } }),
   downloadPayslip: (id) =>
     api.get(`/payroll/${id}/payslip`, {
       responseType: 'blob',

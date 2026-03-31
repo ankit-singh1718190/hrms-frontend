@@ -422,14 +422,18 @@ export default function Calendar() {
           </select>
 
           {/* Year Selector */}
+          {/* Year Selector — dynamic range: 5 years back to 2 years ahead */}
           <select
             value={year}
             onChange={(e) => setYear(Number(e.target.value))}
             className="px-3 py-2 border rounded-lg text-sm"
           >
-            <option value={2026}>2026</option>
-            <option value={2025}>2025</option>
-            <option value={2024}>2024</option>
+            {Array.from(
+              { length: 8 },
+              (_, i) => new Date().getFullYear() - 5 + i
+            ).map((y) => (
+              <option key={y} value={y}>{y}</option>
+            ))}
           </select>
 
           {/* Month Navigation ONLY if monthly */}
